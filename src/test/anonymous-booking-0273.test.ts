@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * db-pending/0273 (Stap 7e, anonymous booking engine) and its rollback, on
+ * db-pending/0273 (Stap 7e/7f, anonymous booking engine) and its rollback, on
  * PGlite over a replay of every migration in db/ (… 0267 → 0270 → 0271 →
  * 0272), then 0273 → rollback → 0273. Nothing here touches Neon, and 0273 is
  * not in db/: CODE_SCHEMA_LEVEL stays 0272.
@@ -27,6 +27,9 @@ import { HOST_PUBLIC_KEY_BYTES, HOST_SIGNATURE_BYTES, MAX_CHAIN_LINKS, MAX_EPOCH
 import { PSEUDONYM_BYTES } from "@/lib/crypto-enclave/pseudonyms";
 import { NULLIFIER_BYTES, ROOT_PUBLIC_KEY_BYTES, ROOT_SIGNATURE_BYTES, SMT_EMPTY_ROOT_HEX, SMT_NODE_BYTES } from "@/lib/crypto-enclave/smt";
 import { CODE_SCHEMA_LEVEL } from "@/lib/schema-version";
+import { CAPACITY_TAKE_PROOF_BYTES, ledgerEventsFromJson, verifyAnonLedger } from "@/lib/crypto-enclave/anon-ledger";
+import { HSK_ENVELOPE_BYTES } from "@/lib/crypto-enclave/forward-secure";
+import { contextStatements } from "@/lib/db-context";
 
 const ROOT = join(__dirname, "..", "..");
 const FILE = "0273_anonymous_booking_engine.sql";
@@ -34,16 +37,25 @@ const SQL = readFileSync(join(ROOT, "db-pending", FILE), "utf8");
 const ROLLBACK = readFileSync(join(ROOT, "db-pending", "0273_anonymous_booking_engine_rollback.sql"), "utf8");
 const SQL_0272 = readFileSync(join(ROOT, "db", "0272_dynamic_recovery_v4.sql"), "utf8");
 
-const HSK_BYTES = 1695; // RVE1 overhead 1663 + 32-byte ratchet state
+const HSK_BYTES = HSK_ENVELOPE_BYTES; // RVE1 overhead 1663 + SK_t (32) || epoch (8)
 const PROOF_MIN = 272;
+const WINDOW = 80 + 2 * 928; // committed slot + two range proofs (anon.rs)
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
-const id = (p: "hk" | "st") => `${p}_${hex(randomBytes(32))}`;
-const hsk = (kind = 9, holder = 1) => {
+const id = (p: "hk" | "st" | "cp") => `${p}_${hex(randomBytes(32))}`;
+const hsk = (kind = 9, holder = 2) => {
   const e = randomBytes(HSK_BYTES);
   e.set([0x52, 0x56, 0x45, 0x31, 1, kind, holder]);
   return e;
 };
-const presentation = (undisclosed = 3) => randomBytes(PROOF_MIN + 32 * undisclosed);
+/** I2OSP(bbs_len, 8) || BBS proof || committed slot || two range proofs. */
+const presentation = (undisclosed = 3, prefix?: number) => {
+  const bbs = PROOF_MIN + 32 * undisclosed;
+  const p = randomBytes(8 + bbs + WINDOW);
+  new DataView(p.buffer).setBigUint64(0, BigInt(prefix ?? bbs), false);
+  return p;
+};
+
+const ANON_ACTIONS = ["anon_booking_check", "anon_booking_record", "anon_capacity_open", "anon_host_key_advance", "anon_host_key_init", "anon_host_key_retire", "anon_host_merge", "anon_host_purge", "anon_host_state_read", "anon_ledger_read", "anon_pseudonym_invalidate"];
 
 type Answer = { op: string; ok: boolean; why: string; epoch: number | null; ver: number | null; spent?: boolean; invalidated?: boolean };
 type Chain = { keyId: string; treeId: string; anchorPk: Uint8Array };
@@ -83,7 +95,9 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
 
   const INIT = "select vault_enclave.anon_host_key_init($1, $2, $3, $4, $5, $6, $7, $8, $9) as a";
   const ADVANCE = "select vault_enclave.anon_host_key_advance($1, $2, $3, $4, $5, $6, $7) as a";
-  const RECORD = "select vault_enclave.anon_booking_record($1, $2, $3, $4, $5, $6, $7, $8) as a";
+  const RECORD = "select vault_enclave.anon_booking_record($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) as a";
+  const POOL_OPEN = "select vault_enclave.anon_capacity_open($1, $2, $3, $4) as a";
+  const LEDGER = "select vault_enclave.anon_ledger($1, $2, $3) as a";
   const CHECK = "select vault_enclave.anon_booking_check($1, $2) as a";
   const INVALIDATE = "select vault_enclave.anon_pseudonym_invalidate($1, $2, $3) as a";
   const RETIRE = "select vault_enclave.anon_host_key_retire($1, $2) as a";
@@ -104,9 +118,13 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
   };
   const advance = (user: string, c: Chain, ver: number, from: number, to: number, pk: Uint8Array = randomBytes(HOST_PUBLIC_KEY_BYTES), sig: Uint8Array = randomBytes(HOST_SIGNATURE_BYTES), state: Uint8Array = hsk()) =>
     call(user, ADVANCE, [c.keyId, ver, from, to, pk, sig, state]);
-  const record = (user: string, c: Chain, head: number, o: { nullifier?: Uint8Array; pseudonym?: Uint8Array; credentialEpoch?: number; root?: Uint8Array; sig?: Uint8Array; proof?: Uint8Array } = {}) =>
+  type PoolStep = { poolId: string; step: number; take?: Uint8Array; remaining?: Uint8Array; proof?: Uint8Array };
+  const record = (user: string, c: Chain, head: number, o: { nullifier?: Uint8Array; pseudonym?: Uint8Array; credentialEpoch?: number; root?: Uint8Array; sig?: Uint8Array; proof?: Uint8Array; pool?: PoolStep; raw?: unknown[] } = {}) =>
     call(user, RECORD, [c.treeId, head, o.root ?? randomBytes(SMT_NODE_BYTES), o.sig ?? randomBytes(ROOT_SIGNATURE_BYTES),
-      o.nullifier ?? randomBytes(NULLIFIER_BYTES), o.pseudonym ?? randomBytes(PSEUDONYM_BYTES), o.credentialEpoch ?? 0, o.proof ?? presentation()]);
+      o.nullifier ?? randomBytes(NULLIFIER_BYTES), o.pseudonym ?? randomBytes(PSEUDONYM_BYTES), o.credentialEpoch ?? 0, o.proof ?? presentation(),
+      ...(o.raw ?? (o.pool
+        ? [o.pool.poolId, o.pool.step, o.pool.take ?? randomBytes(48), o.pool.remaining ?? randomBytes(48), o.pool.proof ?? randomBytes(CAPACITY_TAKE_PROOF_BYTES)]
+        : [null, null, null, null, null]))]);
   const head = async (user: string, c: Chain) => (await call(user, CHECK, [c.treeId, randomBytes(NULLIFIER_BYTES)])).epoch!;
   const keyState = (user: string, c: Chain) => call<{ granted: boolean; epoch: number | null; ver: number | null; state_envelope: string | null }>(user, STATE, [c.keyId]);
 
@@ -160,7 +178,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
   });
 
   it("rights: rout_app and PUBLIC reach no table and no helper; RLS is on with one restrictive deny_all policy", async () => {
-    const tables = ["anon_host_keys", "anon_host_key_states", "anon_epoch_links", "anon_smt_trees", "anon_smt_roots", "anon_booking_tokens", "anon_pseudonym_invalidations"];
+    const tables = ["anon_host_keys", "anon_host_key_states", "anon_epoch_links", "anon_smt_trees", "anon_smt_roots", "anon_booking_tokens", "anon_pseudonym_invalidations", "anon_capacity_pools", "anon_ledger_events"];
     for (const t of tables) {
       const r = await db.query<{ s: boolean; i: boolean; p: boolean; rls: boolean; pol: string }>(
         `select has_table_privilege('rout_app', $1, 'select') as s, has_table_privilege('rout_app', $1, 'insert') as i,
@@ -174,7 +192,21 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
       `select p.proname as n, has_function_privilege('rout_app', p.oid, 'execute') as e from pg_proc p join pg_namespace s on s.oid = p.pronamespace
         where s.nspname = 'vault_enclave' and p.proname like 'anon\\_%' order by 1`);
     const open = helpers.rows.filter((r) => r.e).map((r) => r.n);
-    expect(open).toEqual(["anon_booking_check", "anon_booking_record", "anon_host_chain", "anon_host_key_advance", "anon_host_key_init", "anon_host_key_retire", "anon_host_key_state", "anon_pseudonym_invalidate"]);
+    expect(open).toEqual(["anon_booking_check", "anon_booking_record", "anon_capacity_open", "anon_host_chain", "anon_host_key_advance", "anon_host_key_init", "anon_host_key_retire", "anon_host_key_state", "anon_ledger", "anon_pseudonym_invalidate"]);
+    // Lifecycle: the purge entry point only for rout_app, the merge hook only for the merge executor.
+    const life = await db.query<{ pa: boolean; pp: boolean; ma: boolean; mp: boolean; me: boolean }>(
+      `select has_function_privilege('rout_app', 'public.rout_anon_booking_purge(uuid)', 'execute') as pa,
+              has_function_privilege('public', 'public.rout_anon_booking_purge(uuid)', 'execute') as pp,
+              has_function_privilege('rout_app', 'public.rout_anon_booking_merge(uuid, uuid)', 'execute') as ma,
+              has_function_privilege('public', 'public.rout_anon_booking_merge(uuid, uuid)', 'execute') as mp,
+              has_function_privilege('rout_merge_executor', 'public.rout_anon_booking_merge(uuid, uuid)', 'execute') as me`);
+    expect(life.rows[0]).toEqual({ pa: true, pp: false, ma: false, mp: false, me: true });
+    // No foreign key of an anonymous table cascades or nulls on delete.
+    const fks = await db.query<{ c: string; d: string }>(`select c.conname as c, c.confdeltype::text as d from pg_constraint c
+        join pg_class r on r.oid = c.conrelid join pg_namespace n on n.oid = r.relnamespace
+       where n.nspname = 'vault_enclave' and r.relname like 'anon\\_%' and c.contype = 'f'`);
+    expect(fks.rows.length).toBeGreaterThanOrEqual(9);
+    expect(fks.rows.filter((r) => r.d !== "r")).toEqual([]);
     const pub = await db.query<{ n: number }>(`select count(*)::int as n from pg_proc p join pg_namespace s on s.oid = p.pronamespace
         where s.nspname = 'vault_enclave' and has_function_privilege('public', p.oid, 'execute')`);
     expect(pub.rows[0]!.n).toBe(0);
@@ -183,7 +215,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     expect(anyTable.rows[0]!.n).toBe(0);
   });
 
-  it("the audit action check keeps every 0272 value and adds exactly the seven anon actions", async () => {
+  it("the audit action check keeps every 0272 value and adds exactly the eleven anon actions", async () => {
     const quoted = (s: string) => [...s.matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]!);
     const block = SQL_0272.slice(SQL_0272.indexOf("add constraint audit_logs_action_check"), SQL_0272.indexOf("));", SQL_0272.indexOf("add constraint audit_logs_action_check")));
     const before = quoted(block);
@@ -191,7 +223,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     const now = quoted(live);
     expect(before.length).toBeGreaterThan(30);
     expect(before.filter((a) => !now.includes(a))).toEqual([]);
-    expect(now.filter((a) => !before.includes(a)).sort()).toEqual(["anon_booking_check", "anon_booking_record", "anon_host_key_advance", "anon_host_key_init", "anon_host_key_retire", "anon_host_state_read", "anon_pseudonym_invalidate"]);
+    expect(now.filter((a) => !before.includes(a)).sort()).toEqual(ANON_ACTIONS);
   });
 
   it("no caller in the transaction context: every entry point answers no_caller", async () => {
@@ -218,7 +250,9 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     const p = await proof(HOST);
     expect((await call(HOST, INIT, initArgs(p, chain, { 1: "hk_short" }))).why).toBe("malformed");
     expect((await call(HOST, INIT, initArgs(p, chain, { 2: randomBytes(95) }))).why).toBe("malformed");
-    expect((await call(HOST, INIT, initArgs(p, chain, { 5: hsk(9, 2) }))).why).toBe("malformed"); // holder must be the server vault
+    expect((await call(HOST, INIT, initArgs(p, chain, { 5: hsk(9, 1) }))).why).toBe("malformed"); // never the server vault (7f)
+    expect((await call(HOST, INIT, initArgs(p, chain, { 5: hsk(9, 3) }))).why).toBe("malformed"); // only the member device
+    expect((await call(HOST, INIT, initArgs(p, chain, { 5: randomBytes(1695).fill(0x52, 0, 1) }))).why).toBe("malformed"); // 7e size
     expect((await call(HOST, INIT, initArgs(p, chain, { 5: hsk(5, 1) }))).why).toBe("malformed"); // kind must be hsk (9)
     expect(await call(HOST, INIT, initArgs(p, chain))).toMatchObject({ ok: true, epoch: 0, ver: 0 });
     // The proof is spent; a second live chain is refused; ids are never reused.
@@ -273,6 +307,10 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     const first = { nullifier: spentNullifier, pseudonym: usedPseudonym, credentialEpoch: 1, root, sig, proof: pr };
     expect((await record(OTHER, chain, 0, first)).why).toBe("unknown");
     expect((await record(HOST, chain, 0, { ...first, proof: randomBytes(PROOF_MIN + 31) })).why).toBe("malformed");
+    expect((await record(HOST, chain, 0, { ...first, proof: presentation(5, PROOF_MIN + 32 * 4) })).why).toBe("malformed"); // prefix lies
+    expect((await record(HOST, chain, 0, { ...first, proof: presentation(5).subarray(0, 8 + PROOF_MIN + 160 + WINDOW - 1) })).why).toBe("malformed");
+    expect((await record(HOST, chain, 0, { ...first, raw: [id("cp"), null, null, null, null] })).why).toBe("malformed"); // half a pool step
+    expect((await record(HOST, chain, 0, { ...first, raw: [null, 1, null, null, null] })).why).toBe("malformed");
     expect((await record(HOST, chain, 0, { ...first, nullifier: randomBytes(31) })).why).toBe("malformed");
     expect((await record(HOST, chain, 0, { ...first, credentialEpoch: 2 })).why).toBe("epoch"); // skipped epoch
     expect((await record(HOST, chain, 0, { ...first, credentialEpoch: 4 })).why).toBe("epoch"); // future epoch
@@ -303,19 +341,163 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     expect(await call(HOST, CHECK, [chain.treeId, spentNullifier])).toMatchObject({ spent: true, invalidated: true });
   });
 
-  it("history rows are append-only even for the owner; cascades from a deleted account still pass", async () => {
-    for (const t of ["anon_epoch_links", "anon_smt_roots", "anon_booking_tokens", "anon_pseudonym_invalidations"]) {
+  it("history rows are append-only even for the owner, and nothing cascades: deleting a host account without the purge fails", async () => {
+    for (const t of ["anon_epoch_links", "anon_smt_roots", "anon_booking_tokens", "anon_pseudonym_invalidations", "anon_ledger_events", "anon_host_keys", "anon_smt_trees", "anon_capacity_pools"]) {
       await expect(db.query(`delete from vault_enclave.${t}`)).rejects.toThrow(/anon_append_only/);
       await expect(db.query(`truncate vault_enclave.${t} cascade`)).rejects.toThrow(/anon_append_only/);
     }
     await expect(db.query("update vault_enclave.anon_smt_roots set root = root")).rejects.toThrow(/anon_append_only/);
     await expect(db.query("update vault_enclave.anon_booking_tokens set credential_epoch = 0")).rejects.toThrow(/anon_append_only/);
+    await expect(db.query("update vault_enclave.anon_ledger_events set kind = kind")).rejects.toThrow(/anon_append_only/);
     const gone = await newUser();
     const c = await initHost(gone);
     expect((await record(gone, c, 0)).ok).toBe(true);
-    await db.query("delete from public.users where id = $1", [gone]);
-    const left = await db.query<{ n: number }>("select (select count(*) from vault_enclave.anon_host_keys where key_id = $1) + (select count(*) from vault_enclave.anon_smt_roots where tree_id = $2) as n", [c.keyId, c.treeId]);
-    expect(Number(left.rows[0]!.n)).toBe(0);
+    // A purge that forgot the anonymous tables must fail, not drop spent nullifiers.
+    await expect(db.query("delete from public.users where id = $1", [gone])).rejects.toThrow(/foreign key/);
+  });
+
+  /** The account purge transaction of src/lib/account-purge.ts, reduced to the anonymous step and the user row. */
+  const purge = async (user: string, due = true) => {
+    await db.query("insert into public.account_deletions (user_id, requested_at, purge_after) values ($1, now() - interval '31 days', $2) on conflict (user_id) do update set purge_after = excluded.purge_after, cancelled_at = null, completed_at = null",
+      [user, due ? new Date(Date.now() - 86_400_000).toISOString() : new Date(Date.now() + 86_400_000).toISOString()]);
+    await db.exec("begin");
+    try {
+      await db.exec("set local role rout_app");
+      await db.query("select set_config('rout.purge_user_id', $1, true)", [user]);
+      const n = (await db.query<{ n: number }>("select public.rout_anon_booking_purge($1::uuid) as n", [user])).rows[0]!.n;
+      await db.exec("reset role");
+      await db.query("delete from public.users where id = $1", [user]);
+      await db.query("delete from public.account_deletions where user_id = $1", [user]);
+      await db.exec("commit");
+      return n;
+    } catch (e) {
+      await db.exec("rollback");
+      throw e;
+    }
+  };
+
+  it("purge: only when due; retires the live chain, deletes every sealed state, detaches the chains and keeps all spent nullifiers", async () => {
+    const gone = await newUser();
+    const c = await initHost(gone);
+    const nf = randomBytes(NULLIFIER_BYTES);
+    expect((await record(gone, c, 0, { nullifier: nf })).ok).toBe(true);
+    await expect(purge(gone, false)).rejects.toThrow(/anon_purge_not_due/);
+    // Outside a purge transaction rout_app cannot call it for anyone.
+    await expect(call(OTHER, "select public.rout_anon_booking_purge($1::uuid)::text as a", [gone])).rejects.toThrow(/anon_purge_not_due/);
+    expect(await purge(gone)).toBe(1);
+    const k = await db.query<{ h: string | null; p: boolean; r: boolean; s: number }>(
+      `select host_user_id::text as h, purged_at is not null as p, retired_at is not null as r,
+              (select count(*)::int from vault_enclave.anon_host_key_states where key_id = $1) as s
+         from vault_enclave.anon_host_keys where key_id = $1`, [c.keyId]);
+    expect(k.rows[0]).toEqual({ h: null, p: true, r: true, s: 0 });
+    const kept = await db.query<{ n: number }>("select count(*)::int as n from vault_enclave.anon_booking_tokens where tree_id = $1 and nullifier = $2", [c.treeId, nf]);
+    expect(kept.rows[0]!.n).toBe(1);
+    const ledger = await db.query<{ kinds: string[] }>("select array_agg(kind order by seq) as kinds from vault_enclave.anon_ledger_events where tree_id = $1", [c.treeId]);
+    expect(ledger.rows[0]!.kinds).toEqual(["genesis", "booking", "retire"]);
+    // The public chain stays verifiable; no audit row names the purged member.
+    expect(await call("", CHAIN, [c.keyId])).toMatchObject({ found: true, retired: true });
+    const named = await db.query<{ n: number }>("select count(*)::int as n from vault_enclave.audit_logs where action = 'anon_host_purge' and actor_user_id is not null");
+    expect(named.rows[0]!.n).toBe(0);
+    // An account without chains purges with zero.
+    expect(await purge(await newUser())).toBe(0);
+  });
+
+  it("merge: execute_account_merge retires the secondary's live chain, moves its chains to the primary and keeps the primary's", async () => {
+    const primary = await newUser();
+    const secondary = await newUser();
+    const pc = await initHost(primary);
+    const sc = await initHost(secondary);
+    expect((await record(secondary, sc, 0)).ok).toBe(true);
+    const ticket = crypto.randomUUID();
+    await db.query("insert into public.account_merge_tickets(id,primary_user_id,preview_user_id,pin_hash,token_hash,expires_at) values($1,$2,$3,'ticket-7f','qr',now()+interval '5 minutes')", [ticket, primary, secondary]);
+    await db.query("insert into public.security_codes(user_id,purpose,code_hash,expires_at) values($1,'merge','email-proof-7f',now()+interval '10 minutes')", [secondary]);
+    // The hook is callable only by the merge executor and only for the signed-in secondary.
+    await expect(call(secondary, "select public.rout_anon_booking_merge($1::uuid, $2::uuid)::text as a", [primary, secondary])).rejects.toThrow(/permission/);
+    await db.exec("begin");
+    let result: { ok: boolean; reason?: string };
+    try {
+      await db.exec("set local role rout_app");
+      for (const st of contextStatements({ userId: secondary, workspaceId: null })) await db.query(st.query, st.params);
+      result = (await db.query<{ r: { ok: boolean; reason?: string } }>("select public.execute_account_merge($1,$2,$3,$4) as r", ["ticket-7f", "email-proof-7f", "primary", "primary"])).rows[0]!.r;
+      await db.exec("commit");
+    } catch (e) {
+      await db.exec("rollback");
+      throw e;
+    }
+    expect(result).toMatchObject({ ok: true });
+    const rows = await db.query<{ k: string; h: string; r: boolean; s: number }>(
+      `select key_id as k, host_user_id::text as h, retired_at is not null as r,
+              (select count(*)::int from vault_enclave.anon_host_key_states s where s.key_id = k.key_id) as s
+         from vault_enclave.anon_host_keys k where key_id = any($1) order by key_id`, [[pc.keyId, sc.keyId]]);
+    const byKey = Object.fromEntries(rows.rows.map((r) => [r.k, r]));
+    expect(byKey[pc.keyId]).toMatchObject({ h: primary, r: false, s: 1 });
+    expect(byKey[sc.keyId]).toMatchObject({ h: primary, r: true, s: 0 });
+    // Primary still has exactly one live chain and reads the moved ledger.
+    const l = await call<{ ok: boolean; events: { kind: string }[] }>(primary, LEDGER, [sc.treeId, -1, 100]);
+    expect(l.ok).toBe(true);
+    expect(l.events.map((e) => e.kind)).toEqual(["genesis", "booking", "retire"]);
+  }, 60_000);
+
+  it("capacity pools: opened once per tree, every booking step is compare-and-swap on the pool step", async () => {
+    const u = await newUser();
+    const c = await initHost(u);
+    const otherOwner = await newUser();
+    const other = { owner: otherOwner, chain: await initHost(otherOwner) };
+    const poolId = id("cp");
+    const c0 = randomBytes(48);
+    const p0 = randomBytes(928);
+    expect((await call(OTHER, POOL_OPEN, [c.treeId, poolId, c0, p0])).why).toBe("unknown");
+    expect((await call(u, POOL_OPEN, [c.treeId, "cp_short", c0, p0])).why).toBe("malformed");
+    expect((await call(u, POOL_OPEN, [c.treeId, poolId, c0, randomBytes(927)])).why).toBe("malformed");
+    expect(await call(u, POOL_OPEN, [c.treeId, poolId, c0, p0])).toMatchObject({ ok: true, why: "ok", ver: 0 });
+    expect(await call(u, POOL_OPEN, [c.treeId, poolId, c0, p0])).toMatchObject({ ok: true, why: "replay" });
+    expect((await call(u, POOL_OPEN, [c.treeId, poolId, randomBytes(48), p0])).why).toBe("taken");
+    // A pool of another tree, or an unknown one, is refused; a stale or skipped step conflicts.
+    expect((await record(u, c, 0, { pool: { poolId: id("cp"), step: 1 } })).why).toBe("pool");
+    const theirs = id("cp");
+    expect((await call(other.owner, POOL_OPEN, [other.chain.treeId, theirs, c0, p0])).ok).toBe(true);
+    expect((await record(u, c, 0, { pool: { poolId: theirs, step: 1 } })).why).toBe("pool");
+    expect((await record(u, c, 0, { pool: { poolId, step: 2 } })).why).toBe("pool_conflict");
+    expect((await record(u, c, 0, { pool: { poolId, step: 0 } })).why).toBe("malformed");
+    const r1 = randomBytes(48);
+    expect(await record(u, c, 0, { pool: { poolId, step: 1, remaining: r1 } })).toMatchObject({ ok: true, epoch: 1, ver: 1 });
+    expect((await record(u, c, 1, { pool: { poolId, step: 1 } })).why).toBe("pool_conflict");
+    expect(await record(u, c, 1)).toMatchObject({ ok: true, epoch: 2 }); // unpooled booking on the same tree
+    expect(await record(u, c, 2, { pool: { poolId, step: 2 } })).toMatchObject({ ok: true, epoch: 3, ver: 2 });
+    const pool = await db.query<{ step: number; rem: string }>("select step::int as step, encode(remaining_commitment, 'hex') as rem from vault_enclave.anon_capacity_pools where pool_id = $1", [poolId]);
+    expect(pool.rows[0]!.step).toBe(2);
+    expect(pool.rows[0]!.rem).not.toBe(hex(r1));
+  });
+
+  it("ledger: one hash chain per tree, recomputed byte for byte by the client verifier; only the owner reads it", async () => {
+    const u = await newUser();
+    const c = await initHost(u);
+    const poolId = id("cp");
+    expect((await call(u, POOL_OPEN, [c.treeId, poolId, randomBytes(48), randomBytes(928)])).ok).toBe(true);
+    const ps = randomBytes(PSEUDONYM_BYTES);
+    expect((await record(u, c, 0, { pseudonym: ps, pool: { poolId, step: 1 } })).ok).toBe(true);
+    expect((await record(u, c, 1)).ok).toBe(true);
+    expect((await call(u, INVALIDATE, [c.treeId, ps, "cancelled"])).ok).toBe(true);
+    expect((await call(u, RETIRE, [await proof(u), c.keyId])).ok).toBe(true);
+    expect((await call(OTHER, LEDGER, [c.treeId, -1, 100])).why).toBe("unknown");
+    expect((await call(u, LEDGER, [c.treeId, -1, 0])).why).toBe("malformed");
+    const l = await call<{ ok: boolean; headSeq: number; headHash: string; events: unknown[] }>(u, LEDGER, [c.treeId, -1, 100]);
+    const events = ledgerEventsFromJson(l.events);
+    expect(events.map((e) => e.kind)).toEqual(["genesis", "pool_open", "booking", "booking", "invalidate", "retire"]);
+    const v = verifyAnonLedger(c.treeId, events);
+    expect(v).toMatchObject({ ok: true, headSeq: 5, bookings: 2 });
+    if (!v.ok) throw new Error("ledger");
+    expect(hex(v.headHash)).toBe(l.headHash);
+    expect(v.capacity.map((s) => s.kind)).toEqual(["open", "take"]);
+    // Paging continues from a verified head.
+    const page = await call<{ events: unknown[] }>(u, LEDGER, [c.treeId, 3, 100]);
+    expect(ledgerEventsFromJson(page.events).map((e) => e.seq)).toEqual([4, 5]);
+    // Any change to any event breaks the chain at that event.
+    const tampered = events.map((e) => ({ ...e }));
+    tampered[2] = { ...tampered[2]!, nullifier: randomBytes(32) };
+    expect(verifyAnonLedger(c.treeId, tampered)).toMatchObject({ ok: false, at: 2, error: "hash" });
+    expect(verifyAnonLedger(c.treeId, [events[0]!, events[2]!])).toMatchObject({ ok: false, error: "sequence" });
+    expect(verifyAnonLedger(id("st"), events)).toMatchObject({ ok: false, at: 0, error: "hash" });
   });
 
   it("retire needs a fresh step-up, deletes the sealed state and freezes the chain; a new chain can start", async () => {
@@ -449,7 +631,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
 
   it("every anon writer ran and the hash-chained audit log holds all of them", async () => {
     const a = await db.query<{ action: string }>("select distinct action from vault_enclave.audit_logs where action like 'anon\\_%' order by 1");
-    expect(a.rows.map((r) => r.action)).toEqual(["anon_booking_check", "anon_booking_record", "anon_host_key_advance", "anon_host_key_init", "anon_host_key_retire", "anon_host_state_read", "anon_pseudonym_invalidate"]);
+    expect(a.rows.map((r) => r.action)).toEqual(ANON_ACTIONS);
     const ok = await db.query<{ ok: boolean }>("select vault_enclave.verify_audit_chain() as ok");
     expect(ok.rows[0]!.ok).toBe(true);
     const leaks = await db.query<{ n: number }>("select count(*)::int as n from vault_enclave.audit_logs where action like 'anon\\_%' and token_ref is not null");
