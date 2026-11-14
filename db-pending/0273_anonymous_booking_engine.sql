@@ -266,7 +266,7 @@ create table vault_enclave.anon_ledger_events (
     and (take_commitment is null or octet_length(take_commitment) = 48)
     and (remaining_commitment is null or octet_length(remaining_commitment) = 48)
     and (nullifier is null or octet_length(nullifier) = 32) and (pseudonym is null or octet_length(pseudonym) = 32)),
-  constraint anon_ledger_events_shape check (case kind
+  constraint anon_ledger_events_shape check ((kind = 'genesis') = (seq = 0) and case kind
     when 'genesis' then seq = 0 and prev_hash = '\x0000000000000000000000000000000000000000000000000000000000000000'::bytea
       and pool_id is null and nullifier is null and pseudonym is null and proof is null
     when 'pool_open' then pool_id is not null and pool_step = 0 and take_commitment is null
@@ -276,7 +276,7 @@ create table vault_enclave.anon_ledger_events (
       or (pool_id is not null and pool_step >= 1 and take_commitment is not null and remaining_commitment is not null
       and octet_length(proof) = 1856))
     when 'invalidate' then pseudonym is not null and pool_id is null and nullifier is null and proof is null
-    else pool_id is null and nullifier is null and pseudonym is null and proof is null end and seq > 0 or kind = 'genesis')
+    else pool_id is null and nullifier is null and pseudonym is null and proof is null end)
 );
 
 -- History rows are append-only: no UPDATE, no DELETE, no TRUNCATE (there are
@@ -364,6 +364,68 @@ begin
   return found;
 end $$;
 
+-- Length-prefixed field of the ledger encoding; NULL is 0xffffffff.
+create function vault_enclave.anon_lp(p bytea) returns bytea
+language sql immutable set search_path = pg_catalog, pg_temp as $$
+  select case when p is null then '\xffffffff'::bytea else pg_catalog.int4send(pg_catalog.octet_length(p)) || p end
+$$;
+
+-- event_hash = SHA-256("rout.anon.ledger.v1" || lp(tree) || I2OSP(seq, 8) ||
+-- lp(kind) || I2OSP(root_epoch, 8) || smt_root || lp(pool) || I2OSP(pool_step
+-- or -1, 8) || lp(take) || lp(remaining) || lp(proof) || lp(nullifier) ||
+-- lp(pseudonym) || prev_hash). Same rule as src/lib/crypto-enclave/anon-ledger.ts.
+create function vault_enclave.anon_ledger_hash(
+  p_tree text, p_seq bigint, p_kind text, p_root_epoch bigint, p_root bytea, p_pool text, p_pool_step bigint,
+  p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea, p_prev bytea)
+returns bytea language sql immutable set search_path = pg_catalog, pg_temp as $$
+  select pg_catalog.sha256(pg_catalog.convert_to('rout.anon.ledger.v1', 'UTF8')
+    || vault_enclave.anon_lp(pg_catalog.convert_to(p_tree, 'UTF8')) || pg_catalog.int8send(p_seq)
+    || vault_enclave.anon_lp(pg_catalog.convert_to(p_kind, 'UTF8')) || pg_catalog.int8send(p_root_epoch) || p_root
+    || vault_enclave.anon_lp(pg_catalog.convert_to(p_pool, 'UTF8')) || pg_catalog.int8send(coalesce(p_pool_step, -1))
+    || vault_enclave.anon_lp(p_take) || vault_enclave.anon_lp(p_rem) || vault_enclave.anon_lp(p_proof)
+    || vault_enclave.anon_lp(p_nf) || vault_enclave.anon_lp(p_ps) || p_prev)
+$$;
+
+-- Appends one event at ledger_seq + 1 over the tree's current signed root.
+-- Callers hold the tree row (FOR UPDATE) in the same transaction.
+create function vault_enclave.anon_ledger_append(
+  p_tree text, p_kind text, p_pool text, p_pool_step bigint, p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea)
+returns bytea language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  t vault_enclave.anon_smt_trees%rowtype;
+  v_root bytea;
+  v_hash bytea;
+begin
+  select * into strict t from vault_enclave.anon_smt_trees tr where tr.tree_id = p_tree for update;
+  select r.root into strict v_root from vault_enclave.anon_smt_roots r where r.tree_id = p_tree and r.epoch = t.head_epoch;
+  v_hash := vault_enclave.anon_ledger_hash(p_tree, t.ledger_seq + 1, p_kind, t.head_epoch, v_root, p_pool, p_pool_step,
+                                           p_take, p_rem, p_proof, p_nf, p_ps, t.ledger_head);
+  insert into vault_enclave.anon_ledger_events (tree_id, seq, kind, root_epoch, smt_root, pool_id, pool_step,
+      take_commitment, remaining_commitment, proof, nullifier, pseudonym, prev_hash, event_hash)
+  values (p_tree, t.ledger_seq + 1, p_kind, t.head_epoch, v_root, p_pool, p_pool_step, p_take, p_rem, p_proof, p_nf, p_ps,
+          t.ledger_head, v_hash);
+  update vault_enclave.anon_smt_trees set ledger_seq = ledger_seq + 1, ledger_head = v_hash where tree_id = p_tree;
+  return v_hash;
+end $$;
+
+-- Ends one live chain: deletes its sealed state, sets retired_at, and records
+-- 'retire' on its tree's ledger. No-op on a chain that is already retired.
+create function vault_enclave.anon_retire_chain(p_key_id text) returns boolean
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare v_tree text;
+begin
+  perform 1 from vault_enclave.anon_host_keys k where k.key_id = p_key_id and k.retired_at is null for update;
+  if not found then return false; end if;
+  delete from vault_enclave.anon_host_key_states s where s.key_id = p_key_id;
+  update vault_enclave.anon_host_keys set retired_at = pg_catalog.clock_timestamp(), ver = ver + 1,
+         updated_at = pg_catalog.clock_timestamp() where key_id = p_key_id;
+  select t.tree_id into v_tree from vault_enclave.anon_smt_trees t where t.key_id = p_key_id;
+  if v_tree is not null then
+    perform vault_enclave.anon_ledger_append(v_tree, 'retire', null, null, null, null, null, null, null);
+  end if;
+  return true;
+end $$;
+
 -- ---------------------------------------------------------------- entry points
 
 -- Creates the caller's chain: anchor PK_0 (epoch 0), the sealed SK_0 state,
@@ -375,6 +437,7 @@ returns jsonb language plpgsql security definer set search_path = pg_catalog, pg
 declare
   v_caller uuid := vault_enclave.anon_caller();
   v_why text := 'ok';
+  v_genesis bytea;
 begin
   if v_caller is null then
     perform vault_enclave.append_audit(null, 'anon_host_key_init', 'denied', 'no_caller', null);
@@ -402,9 +465,17 @@ begin
   insert into vault_enclave.anon_host_keys (key_id, host_user_id, anchor_pk, anchor_signer_pk, anchor_sig, current_pk)
   values (p_key_id, v_caller, p_anchor_pk, p_anchor_signer_pk, p_anchor_sig, p_anchor_pk);
   insert into vault_enclave.anon_host_key_states (key_id, state_envelope) values (p_key_id, p_state);
-  insert into vault_enclave.anon_smt_trees (tree_id, key_id, root_signer_pk) values (p_tree_id, p_key_id, p_root_signer_pk);
+  insert into vault_enclave.anon_smt_trees (tree_id, key_id, root_signer_pk, ledger_head)
+  values (p_tree_id, p_key_id, p_root_signer_pk, '\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);
   insert into vault_enclave.anon_smt_roots (tree_id, epoch, root, root_sig)
   values (p_tree_id, 0, '\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, p_genesis_sig);
+  v_genesis := vault_enclave.anon_ledger_hash(p_tree_id, 0, 'genesis', 0,
+    '\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, null, null, null, null, null, null, null,
+    '\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);
+  insert into vault_enclave.anon_ledger_events (tree_id, seq, kind, root_epoch, smt_root, prev_hash, event_hash)
+  values (p_tree_id, 0, 'genesis', 0, '\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea,
+          '\x0000000000000000000000000000000000000000000000000000000000000000'::bytea, v_genesis);
+  update vault_enclave.anon_smt_trees set ledger_head = v_genesis where tree_id = p_tree_id;
   perform vault_enclave.append_audit(v_caller, 'anon_host_key_init', 'granted', 'ok', null);
   return vault_enclave.anon_answer('init', true, 'ok', 0, 0);
 end $$;
@@ -483,7 +554,8 @@ begin
 end $$;
 
 -- Ends the caller's chain (fresh step-up): the sealed state is deleted; the
--- public chain, tree and tokens stay for verification of earlier bookings.
+-- public chain, tree, tokens and ledger stay for verification of earlier
+-- bookings, and the ledger records the retirement.
 create function vault_enclave.anon_host_key_retire(p_proof uuid, p_key_id text)
 returns jsonb language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
@@ -507,9 +579,8 @@ begin
     perform vault_enclave.append_audit(v_caller, 'anon_host_key_retire', 'denied', v_why, null);
     return vault_enclave.anon_answer('retire', false, v_why, k.epoch, k.ver);
   end if;
-  delete from vault_enclave.anon_host_key_states s where s.key_id = k.key_id;
-  update vault_enclave.anon_host_keys set retired_at = pg_catalog.clock_timestamp(), ver = ver + 1,
-         updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id returning * into k;
+  perform vault_enclave.anon_retire_chain(k.key_id);
+  select * into k from vault_enclave.anon_host_keys h where h.key_id = p_key_id;
   perform vault_enclave.append_audit(v_caller, 'anon_host_key_retire', 'granted', 'ok', null);
   return vault_enclave.anon_answer('retire', true, 'ok', k.epoch, k.ver);
 end $$;
