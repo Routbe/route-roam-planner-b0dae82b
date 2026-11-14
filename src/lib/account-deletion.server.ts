@@ -1,6 +1,6 @@
 import { sql } from "@/lib/neon";
 import { isDue, purgeAfter, type DeletionRow } from "./account-deletion-rules";
-import { accountPurgeStatements } from "./account-purge";
+import { ANON_BOOKING_PURGE_PROBE, accountPurgeStatements } from "./account-purge";
 
 type Row = Record<string, unknown>;
 const enc = new TextEncoder();
@@ -81,6 +81,8 @@ export async function purgeDueDeletions(limit = 25) {
     order by purge_after limit ${limit}`) as Row[];
   let purged = 0;
   let failed = 0;
+  // Code may run before the reviewed 0273 migration is applied: detect it, never assume it.
+  const anonBooking = due.length > 0 && Boolean(((await sql.query(ANON_BOOKING_PURGE_PROBE)) as Row[])[0]?.["present"]);
   for (const r of due) {
     const row = toRow(r);
     if (!isDue(row, Date.now())) continue;
@@ -90,7 +92,7 @@ export async function purgeDueDeletions(limit = 25) {
     try {
       const audit = await auditStatement(userId, "purged");
       await sql.transaction([
-        ...accountPurgeStatements(userId, authId).map((s) => sql.query(s.query, s.params)),
+        ...accountPurgeStatements(userId, authId, { anonBooking }).map((s) => sql.query(s.query, s.params)),
         sql.query(audit.query, audit.params),
       ]);
       purged++;
