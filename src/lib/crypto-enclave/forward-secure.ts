@@ -14,12 +14,20 @@
  *             anchor PK_0
  *   credential Blind BBS signature (80) of x_t over [key id, t, messages..]
  *
- * The state lives only in this worker (HostKeyStore): on every advance the
- * held buffer is zero-filled and overwritten in place, and secure.wipe /
- * worker termination erases it. It is deliberately not persisted: a stored
- * copy of an older state (a backup, a database row) would undo forward
- * security, so how a host keeps its chain across reloads is an open decision
- * (see docs/HANDOVER.md, Stap 7d).
+ * The state lives in this worker (HostKeyStore): on every advance the held
+ * buffer is zero-filled and overwritten in place, and secure.wipe / worker
+ * termination erases it. Across reloads it exists only as an RVE1 envelope
+ * of kind hsk sealed in this worker to the host's own member-device key
+ * (owner decision 7f): plaintext SK_t || I2OSP(t, 8), context bound to the
+ * member and the key id. The database keeps exactly one such envelope per
+ * chain and replaces it on every advance; neither Neon, the server vault nor
+ * ROUT_VAULT_KEK can open it. "host_key.restore" opens it, recomputes PK_t
+ * and accepts it only if the published chain from the anchor reaches exactly
+ * that key and the epoch is not below what this worker already held.
+ * Limit (documented in docs/HANDOVER.md, Stap 7f): an old envelope from a
+ * backup opens with the same device key, so forward security against a
+ * compromise of that device key reaches back only to the oldest retained
+ * backup.
  */
 import { wipe } from "@/lib/crypto/wipe";
 import { equalBytes } from "./pseudonyms";
@@ -38,6 +46,37 @@ export const MAX_CREDENTIAL_MESSAGES = 30;
 export const MAX_COMMITTED_MESSAGES = 16;
 export const MAX_CREDENTIAL_MESSAGE_BYTES = 1024;
 export const PROVER_BLIND_BYTES = 32;
+/** hsk plaintext: SK_t (32) || I2OSP(epoch, 8). */
+export const HSK_PLAINTEXT_BYTES = HOST_STATE_BYTES + 8;
+/** RVE1 overhead (pqc-envelope ENVELOPE_MIN_BYTES = 1663) + the plaintext; db-pending/0273 anon_is_hsk. */
+export const HSK_ENVELOPE_BYTES = 1663 + HSK_PLAINTEXT_BYTES;
+
+/** Context of a host-state envelope: one member, one chain. */
+export function hskContext(owner: string, keyId: string): string {
+  hostKeyIdBytes(keyId);
+  return `rout.hsk.v1|${owner}|${keyId}`;
+}
+
+/** SK_t || I2OSP(epoch, 8) in a fresh buffer the caller wipes. */
+export function hskPlaintext(state: Uint8Array, epoch: number): Uint8Array {
+  need(state, HOST_STATE_BYTES);
+  const out = new Uint8Array(HSK_PLAINTEXT_BYTES);
+  out.set(state);
+  new DataView(out.buffer).setBigUint64(HOST_STATE_BYTES, BigInt(epochOf(epoch)), false);
+  return out;
+}
+
+/** Splits an opened hsk plaintext; the state is a fresh buffer, the input is wiped. */
+export function parseHskPlaintext(plaintext: Uint8Array): { state: Uint8Array; epoch: number } {
+  try {
+    need(plaintext, HSK_PLAINTEXT_BYTES);
+    const e = new DataView(plaintext.buffer, plaintext.byteOffset).getBigUint64(HOST_STATE_BYTES, false);
+    if (e > BigInt(Number.MAX_SAFE_INTEGER)) throw new ZkEngineError("zk_invalid_input");
+    return { state: plaintext.slice(0, HOST_STATE_BYTES), epoch: Number(e) };
+  } finally {
+    wipe(plaintext);
+  }
+}
 
 export type HostKeyAnchor = { keyId: string; publicKey: Uint8Array };
 export type EpochLink = { from: number; to: number; publicKey: Uint8Array; signature: Uint8Array };
@@ -245,6 +284,19 @@ export class HostKeyStore {
     const k = this.key(owner, keyId);
     if (this.slots.has(k)) throw new ZkEngineError("zk_invalid_input");
     this.slots.set(k, { state, epoch: 0, anchor: publicKey.slice(), publicKey: publicKey.slice(), links: [] });
+  }
+
+  /**
+   * Installs a state restored from its sealed envelope (the caller verified
+   * PK_t against the published chain). Takes ownership of `state`.
+   */
+  restore(owner: string, keyId: string, state: Uint8Array, epoch: number, anchor: Uint8Array, publicKey: Uint8Array, links: EpochLink[]): void {
+    const k = this.key(owner, keyId);
+    if (this.slots.has(k) || state.byteLength !== HOST_STATE_BYTES) {
+      wipe(state);
+      throw new ZkEngineError("zk_invalid_input");
+    }
+    this.slots.set(k, { state, epoch, anchor: anchor.slice(), publicKey: publicKey.slice(), links: links.map(copyLink) });
   }
 
   /** Overwrites the held state with `next` in place and wipes `next`. */
