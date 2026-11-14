@@ -1024,8 +1024,8 @@ begin
   if v_bad is not null then raise exception '0273: cascading or non-restrict foreign key %', v_bad; end if;
   if pg_catalog.has_function_privilege('rout_app', 'public.rout_anon_booking_merge(uuid, uuid)', 'execute')
      or pg_catalog.has_function_privilege('public', 'public.rout_anon_booking_purge(uuid)', 'execute')
-     or pg_catalog.position('rout_anon_booking_merge(v_primary, v_secondary)' in
-          pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure)) = 0 then
+     or pg_catalog.strpos(pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure),
+          'rout_anon_booking_merge(v_primary, v_secondary)') = 0 then
     raise exception '0273: lifecycle functions wrongly granted or merge hook missing';
   end if;
 end $$;

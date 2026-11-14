@@ -101,8 +101,8 @@ begin
   end if;
   if pg_catalog.to_regprocedure('public.rout_anon_booking_purge(uuid)') is not null
      or pg_catalog.to_regprocedure('public.rout_anon_booking_merge(uuid,uuid)') is not null
-     or pg_catalog.position('rout_anon_booking_merge' in
-          pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure)) > 0 then
+     or pg_catalog.strpos(pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure),
+          'rout_anon_booking_merge') > 0 then
     raise exception '0273 rollback incomplete (lifecycle)';
   end if;
 end $$;
