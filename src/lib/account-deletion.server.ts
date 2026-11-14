@@ -82,7 +82,7 @@ export async function purgeDueDeletions(limit = 25) {
   let purged = 0;
   let failed = 0;
   // Code may run before the reviewed 0273 migration is applied: detect it, never assume it.
-  const anonBooking = due.length > 0 && Boolean(((await sql.query(ANON_BOOKING_PURGE_PROBE)) as Row[])[0]?.["present"]);
+  const anonBooking = due.length > 0 && Boolean(((await sql.query(ANON_BOOKING_PURGE_PROBE, [])) as Row[])[0]?.["present"]);
   for (const r of due) {
     const row = toRow(r);
     if (!isDue(row, Date.now())) continue;
