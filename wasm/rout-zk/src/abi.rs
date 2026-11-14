@@ -5,6 +5,7 @@
 //! Packed message list: repeated `kind (u8: 0 = HASH, 1 = RAW) || len (u32 LE) || bytes`.
 //! Index list: `count` u32 LE values.
 
+use crate::anon;
 use crate::blind;
 use crate::bulletproofs::{self, BulletproofGens, RangeProof, PROOF_LEN};
 use crate::pedersen::{value_u64, Commitment, PedersenGens};
@@ -105,8 +106,9 @@ fn indexes(b: &[u8], out: &mut [usize; MAX_MESSAGES]) -> Result<usize, Error> {
 pub extern "C" fn rout_zk_abi_version() -> u32 {
     // 1 = BBS / Blind BBS / pseudonym (7a); 2 = + Pedersen and range proofs (7b);
     // 3 = + Poseidon SMT nullifiers with signed roots (7c);
-    // 4 = + forward-secure host keys per epoch (7d).
-    4
+    // 4 = + forward-secure host keys per epoch (7d);
+    // 5 = + slot credentials, anonymous window presentations and capacity pools (7f).
+    5
 }
 
 #[no_mangle]
@@ -522,6 +524,147 @@ pub unsafe extern "C" fn rout_zk_hostkey_verify_credential(
         let res = fs::verify_credential(input(pk, 96), input(kid, kid_len), epoch, input(sig, 80), &r[..n], &rb[..k], &pb);
         wipe::scalar(&mut pb);
         res?;
+        Ok(0)
+    })())
+}
+
+// ---- Stap 7f: slot credentials, anonymous presentation, capacity -----------
+
+/// Packed HASH messages -> borrowed slices (at most MAX_SIGNER_MESSAGES).
+fn hashed_list<'a>(b: &'a [u8], out: &mut [&'a [u8]; MAX_SIGNER_MESSAGES]) -> Result<usize, Error> {
+    let mut m = [Msg::Hash(&[]); MAX_SIGNER_MESSAGES];
+    let n = messages(b, &mut m)?;
+    hashed_only(&m[..n], out)
+}
+
+/// state (32, wiped) | epoch | key_id | commitment_with_proof | slot | packed
+/// HASH messages -> slot credential signature (80).
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_hostkey_sign_slot(
+    state: usize, epoch: u64, kid: usize, kid_len: usize, cwp: usize, cwp_len: usize, slot: u64, msgs: usize, msgs_len: usize, out_sig: usize,
+) -> i32 {
+    code((|| {
+        let k = take_key(state, epoch)?;
+        let mut r = [&[][..]; MAX_SIGNER_MESSAGES];
+        let n = hashed_list(input(msgs, msgs_len), &mut r)?;
+        let sig = k.sign_slot_credential(input(kid, kid_len), input(cwp, cwp_len), slot, &r[..n])?;
+        output(out_sig, 80).copy_from_slice(&sig);
+        Ok(0)
+    })())
+}
+
+/// pk (96) | key_id | epoch | sig (80) | slot | packed HASH messages | packed
+/// HASH committed messages | prover blind (32) -> 0, -2, -1.
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_hostkey_verify_slot_credential(
+    pk: usize, kid: usize, kid_len: usize, epoch: u64, sig: usize, slot: u64, msgs: usize, msgs_len: usize, bmsgs: usize, bmsgs_len: usize,
+    prover_blind: usize,
+) -> i32 {
+    code((|| {
+        let mut r = [&[][..]; MAX_SIGNER_MESSAGES];
+        let n = hashed_list(input(msgs, msgs_len), &mut r)?;
+        let mut rb = [&[][..]; MAX_SIGNER_MESSAGES];
+        let k = hashed_list(input(bmsgs, bmsgs_len), &mut rb)?;
+        if k > MAX_BLIND_MESSAGES {
+            return Err(Error::TooLarge);
+        }
+        let mut pb = scalar_from_be(input(prover_blind, 32))?;
+        let res = fs::verify_slot_credential(input(pk, 96), input(kid, kid_len), epoch, input(sig, 80), slot, &r[..n], &rb[..k], &pb);
+        wipe::scalar(&mut pb);
+        res?;
+        Ok(0)
+    })())
+}
+
+/// pk (96) | key_id | epoch | sig (80) | slot | packed HASH messages |
+/// nullifier (32) | prover blind (32, wiped) | challenge | lo | hi -> the
+/// presentation in out (returns its length).
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_anon_present(
+    pk: usize, kid: usize, kid_len: usize, epoch: u64, sig: usize, slot: u64, msgs: usize, msgs_len: usize, nf: usize, prover_blind: usize,
+    ch: usize, ch_len: usize, lo: u64, hi: u64, out: usize, out_cap: usize,
+) -> i32 {
+    code((|| {
+        let mut r = [&[][..]; MAX_SIGNER_MESSAGES];
+        let n = hashed_list(input(msgs, msgs_len), &mut r)?;
+        let region = output(prover_blind, 32);
+        let pb = scalar_from_be(region);
+        wipe::bytes(region);
+        let mut pb = pb?;
+        let res = anon::present(
+            input(pk, 96), input(kid, kid_len), epoch, input(sig, 80), slot, &r[..n], input(nf, anon::NULLIFIER_LEN), &pb,
+            input(ch, ch_len), lo, hi, &mut host_rng(), output(out, out_cap),
+        );
+        wipe::scalar(&mut pb);
+        Ok(res? as i32)
+    })())
+}
+
+/// pk (96) | key_id | epoch | presentation | packed HASH messages | nullifier
+/// (32) | challenge | lo | hi -> 0, -2 rejected, -1 malformed.
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_anon_verify_presentation(
+    pk: usize, kid: usize, kid_len: usize, epoch: u64, proof: usize, proof_len: usize, msgs: usize, msgs_len: usize, nf: usize,
+    ch: usize, ch_len: usize, lo: u64, hi: u64,
+) -> i32 {
+    code((|| {
+        let mut r = [&[][..]; MAX_SIGNER_MESSAGES];
+        let n = hashed_list(input(msgs, msgs_len), &mut r)?;
+        anon::verify_presentation(
+            input(pk, 96), input(kid, kid_len), epoch, input(proof, proof_len), &r[..n], input(nf, anon::NULLIFIER_LEN),
+            input(ch, ch_len), lo, hi,
+        )?;
+        Ok(0)
+    })())
+}
+
+/// km (32, wiped) | pool | capacity -> C_0 (48) and range proof (928).
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_capacity_open(km: usize, pool: usize, pool_len: usize, capacity: u64, out_c: usize, out_proof: usize) -> i32 {
+    code((|| {
+        let region = output(km, anon::KM_LEN);
+        let res = anon::capacity_open(region, input(pool, pool_len), capacity, &mut host_rng());
+        wipe::bytes(region);
+        let (c, p) = res?;
+        output(out_c, 48).copy_from_slice(&c);
+        output(out_proof, PROOF_LEN).copy_from_slice(&p);
+        Ok(0)
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_capacity_verify_open(c: usize, pool: usize, pool_len: usize, proof: usize) -> i32 {
+    code((|| {
+        anon::capacity_verify_open(input(c, 48), input(pool, pool_len), input(proof, PROOF_LEN))?;
+        Ok(0)
+    })())
+}
+
+/// km (32, wiped) | pool | step | before | take -> C_take (48), C_rem (48), proofs (1856).
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_capacity_take(
+    km: usize, pool: usize, pool_len: usize, step: u64, before: u64, take: u64, out_take: usize, out_rem: usize, out_proofs: usize,
+) -> i32 {
+    code((|| {
+        let region = output(km, anon::KM_LEN);
+        let res = anon::capacity_take(region, input(pool, pool_len), step, before, take, &mut host_rng());
+        wipe::bytes(region);
+        let t = res?;
+        output(out_take, 48).copy_from_slice(&t.take_commitment);
+        output(out_rem, 48).copy_from_slice(&t.remaining_commitment);
+        output(out_proofs, anon::CAPACITY_PROOFS_LEN).copy_from_slice(&t.proofs);
+        Ok(0)
+    })())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_capacity_verify_take(
+    before: usize, take: usize, after: usize, pool: usize, pool_len: usize, step: u64, proofs: usize,
+) -> i32 {
+    code((|| {
+        anon::capacity_verify_take(
+            input(before, 48), input(take, 48), input(after, 48), input(pool, pool_len), step, input(proofs, anon::CAPACITY_PROOFS_LEN),
+        )?;
         Ok(0)
     })())
 }

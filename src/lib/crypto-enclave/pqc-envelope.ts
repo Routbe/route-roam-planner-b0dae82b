@@ -11,7 +11,7 @@
  *   0   4    magic "RVE1" (checked by db/0221)
  *   4   1    suite (1 = this construction)
  *   5   1    token kind (1 vtk, 2 vcc, 3 mpc, 4 sdm; booking blobs 5 bkh, 6 bkg; 7 opk; 8 pak;
- *            9 hsk reserved: host ratchet state, server vault, db-pending/0273, not sealed yet)
+ *            9 hsk host ratchet state SK_t || epoch, member device only, Stap 7f / db-pending/0273)
  *   6   1    key holder (1 server vault, 2 member device, 3 shard factor, 4 booking guest)
  *   7   16   recipient key id = SHA-256("rout.rve1.kid" || publicKey)[0..16)
  *   23  1600 hybrid KEM ciphertext (ML-KEM-1024 1568 || X25519 32)
@@ -55,7 +55,10 @@ export type BookingEnvelopeKind = (typeof BOOKING_ENVELOPE_KINDS)[number];
 /** Server-held system secrets that are not vault tokens: the OPAQUE server setup. */
 export const SYSTEM_ENVELOPE_KINDS = ["opk", "pak"] as const;
 export type SystemEnvelopeKind = (typeof SYSTEM_ENVELOPE_KINDS)[number];
-export type EnvelopeKind = OpaqueTokenKind | BookingEnvelopeKind | SystemEnvelopeKind;
+/** Forward-secure host booking key state (Stap 7f, forward-secure.ts): SK_t || epoch. */
+export const HOST_KEY_ENVELOPE_KINDS = ["hsk"] as const;
+export type HostKeyEnvelopeKind = (typeof HOST_KEY_ENVELOPE_KINDS)[number];
+export type EnvelopeKind = OpaqueTokenKind | BookingEnvelopeKind | SystemEnvelopeKind | HostKeyEnvelopeKind;
 
 /** Owner-confirmed policy: who may ever decrypt each kind. */
 export const KIND_KEY_HOLDER: Readonly<Record<OpaqueTokenKind, KeyHolder>> = Object.freeze({
@@ -78,16 +81,25 @@ export const SYSTEM_KIND_KEY_HOLDER: Readonly<Record<SystemEnvelopeKind, KeyHold
   pak: "server_vault",
 });
 
+/**
+ * Owner decision (Stap 7f, superseding 7e): SK_t opens only on the host's own
+ * device, never in the server vault or under ROUT_VAULT_KEK.
+ */
+export const HOST_KEY_KIND_KEY_HOLDER: Readonly<Record<HostKeyEnvelopeKind, KeyHolder>> = Object.freeze({
+  hsk: "member_device",
+});
+
 function holderOf(kind: EnvelopeKind): KeyHolder | undefined {
   if (Object.hasOwn(KIND_KEY_HOLDER, kind)) return KIND_KEY_HOLDER[kind as OpaqueTokenKind];
   if (Object.hasOwn(SYSTEM_KIND_KEY_HOLDER, kind)) return SYSTEM_KIND_KEY_HOLDER[kind as SystemEnvelopeKind];
   if (Object.hasOwn(BOOKING_KIND_KEY_HOLDER, kind)) return BOOKING_KIND_KEY_HOLDER[kind as BookingEnvelopeKind];
+  if (Object.hasOwn(HOST_KEY_KIND_KEY_HOLDER, kind)) return HOST_KEY_KIND_KEY_HOLDER[kind as HostKeyEnvelopeKind];
   return undefined;
 }
 
 const MAGIC = Uint8Array.of(0x52, 0x56, 0x45, 0x31); // "RVE1"
 const SUITE = 1;
-const KIND_CODE: Readonly<Record<EnvelopeKind, number>> = Object.freeze({ vtk: 1, vcc: 2, mpc: 3, sdm: 4, bkh: 5, bkg: 6, opk: 7, pak: 8 });
+const KIND_CODE: Readonly<Record<EnvelopeKind, number>> = Object.freeze({ vtk: 1, vcc: 2, mpc: 3, sdm: 4, bkh: 5, bkg: 6, opk: 7, pak: 8, hsk: 9 });
 const HOLDER_CODE: Readonly<Record<KeyHolder, number>> = Object.freeze({ server_vault: 1, member_device: 2, shard_factor: 3, booking_guest: 4 });
 
 const KID_LEN = 16;

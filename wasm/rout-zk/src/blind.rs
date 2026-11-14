@@ -211,7 +211,7 @@ pub fn verify_blind_sign(pk: &[u8], sig: &[u8], header: &[u8], msgs: &[Msg<'_>],
 }
 
 /// Y_0, Y_1 = create_generators(2, "COM_DIS_" || api_id).
-fn com_dis_generators(api_id: &[u8]) -> Result<(G1Projective, G1Projective)> {
+pub(crate) fn com_dis_generators(api_id: &[u8]) -> Result<(G1Projective, G1Projective)> {
     let id = Dst::new(&[b"COM_DIS_", api_id])?;
     let mut y = [G1Projective::identity(); 2];
     create_generators(2, id.as_bytes(), &mut y)?;

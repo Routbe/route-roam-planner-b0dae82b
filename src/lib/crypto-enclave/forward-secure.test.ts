@@ -6,7 +6,11 @@
  * the worker store, and the verifier's chain cache.
  */
 import "fake-indexeddb/auto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The committed engine is pinned (zk-wasm-pin.ts); these tests cover the refusal path without one.
+vi.mock("./zk-wasm-pin", () => ({ ROUT_ZK_WASM_SHA384: null }));
+vi.mock("./zk-wasm-bytes", () => ({ ROUT_ZK_WASM_BASE64: null }));
 import { runEnclaveOp } from "./enclave-core";
 import { checkCommitment, EpochChainCache, HostKeyStore, packHashedMessages, type EpochLink } from "./forward-secure";
 

@@ -7,8 +7,16 @@ export const PURGE_OWNER_TABLES = [
   "subdomain_root_claims", "security_audit_logs", "invoice_deliveries",
 ] as const;
 
-/** Statements execute in one transaction; the locked due-request guard must run first. */
-export function accountPurgeStatements(userId: string, authId: string) {
+/** Present once db-pending/0273 (anonymous booking engine) is applied; detected per purge run. */
+export const ANON_BOOKING_PURGE_PROBE = `select to_regprocedure('public.rout_anon_booking_purge(uuid)') is not null as present`;
+
+/**
+ * Statements execute in one transaction; the locked due-request guard must run first.
+ * With `anonBooking` (0273 applied), the host's anonymous booking chains are
+ * retired and detached before the user row goes; their foreign keys are
+ * RESTRICT, so a purge without this step fails instead of dropping spent nullifiers.
+ */
+export function accountPurgeStatements(userId: string, authId: string, opts: { anonBooking?: boolean } = {}) {
   const params = [userId];
   return [
     { query: `select user_id from public.account_deletions where user_id = $1
@@ -35,6 +43,8 @@ export function accountPurgeStatements(userId: string, authId: string) {
     })),
     { query: `delete from neon_auth.verification where identifier in (select email from neon_auth."user" where id::text = $1)`, params: [authId] },
     { query: `delete from neon_auth."user" where id::text = $1`, params: [authId] },
+    // The database re-checks that this deletion is due (db-pending/0273, rout_purge_due).
+    ...(opts.anonBooking ? [{ query: `select public.rout_anon_booking_purge($1::uuid)`, params }] : []),
     { query: `delete from public.users where id = $1`, params },
     { query: `delete from public.account_deletions where user_id = $1`, params },
   ];

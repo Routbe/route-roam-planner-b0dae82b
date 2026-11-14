@@ -31,6 +31,7 @@
 // wasm32 module is no_std with no allocator.
 #![cfg_attr(target_arch = "wasm32", no_std)]
 
+pub mod anon;
 pub mod blind;
 pub mod bulletproofs;
 pub mod codec;

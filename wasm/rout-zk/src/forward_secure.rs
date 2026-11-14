@@ -49,6 +49,10 @@ pub const MAX_ADVANCE: u64 = 1 << 16;
 /// Messages the engine binds into every credential: key id and epoch.
 pub const BOUND_MESSAGES: usize = 2;
 pub const MAX_CREDENTIAL_MESSAGES: usize = MAX_SIGNER_MESSAGES - BOUND_MESSAGES;
+/// Slot credential (Stap 7f): key id, epoch and the RAW slot start, so a later
+/// presentation can commit to the slot and range-prove it (anon.rs).
+pub const SLOT_BOUND_MESSAGES: usize = 3;
+pub const MAX_SLOT_MESSAGES: usize = MAX_SIGNER_MESSAGES - SLOT_BOUND_MESSAGES;
 
 pub const RATCHET_SALT: &[u8] = b"ROUT-HOST-EPOCH-RATCHET-V1";
 pub const RATCHET_INFO: &[u8] = b"rout.v1.host.epoch.state";
@@ -56,7 +60,7 @@ pub const KEY_INFO: &[u8] = b"ROUT-HOST-EPOCH-KEY-V1";
 pub const LINK_HEADER: &[u8] = b"ROUT-HOST-EPOCH-LINK-V1";
 pub const CREDENTIAL_HEADER: &[u8] = b"ROUT-HOST-CREDENTIAL-V1";
 
-fn key_id(k: &[u8]) -> Result<&[u8]> {
+pub(crate) fn key_id(k: &[u8]) -> Result<&[u8]> {
     if k.is_empty() || k.len() > MAX_KEY_ID {
         return Err(Error::Invalid);
     }
@@ -202,6 +206,38 @@ impl EpochKey {
         wipe::scalar(&mut x);
         sig
     }
+
+    /// Slot credential of the current epoch over [key_id, I2OSP(t, 8),
+    /// RAW I2OSP(slot, 8), msgs..]: the slot is the integer the guest later
+    /// range-proves without revealing it (anon::present).
+    pub fn sign_slot_credential(&self, kid: &[u8], cwp: &[u8], slot: u64, msgs: &[&[u8]]) -> Result<[u8; SIGNATURE_LEN]> {
+        let kid = key_id(kid)?;
+        if msgs.len() > MAX_SLOT_MESSAGES {
+            return Err(Error::TooLarge);
+        }
+        let e = self.epoch.to_be_bytes();
+        let s = slot.to_be_bytes();
+        let mut m = [Msg::Hash(&[]); MAX_SIGNER_MESSAGES];
+        let n = slot_bound(kid, &e, &s, msgs, &mut m);
+        let mut x = signing_key(&self.state, self.epoch, kid)?;
+        let pk = core_bbs::sk_to_pk(&x);
+        let sig = blind::blind_sign(&x, &pk, cwp, CREDENTIAL_HEADER, &m[..n]);
+        wipe::scalar(&mut x);
+        sig
+    }
+}
+
+/// [key_id, I2OSP(epoch, 8), RAW I2OSP(slot, 8), m_1..m_L] (HASH except the slot).
+pub(crate) fn slot_bound<'a>(
+    kid: &'a [u8], epoch: &'a [u8; 8], slot: &'a [u8; 8], msgs: &[&'a [u8]], out: &mut [Msg<'a>; MAX_SIGNER_MESSAGES],
+) -> usize {
+    out[0] = Msg::Hash(kid);
+    out[1] = Msg::Hash(epoch);
+    out[2] = Msg::Raw(slot);
+    for (i, m) in msgs.iter().enumerate() {
+        out[SLOT_BOUND_MESSAGES + i] = Msg::Hash(*m);
+    }
+    SLOT_BOUND_MESSAGES + msgs.len()
 }
 
 fn bound<'a>(kid: &'a [u8], epoch: &'a [u8; 8], msgs: &[&'a [u8]], out: &mut [Msg<'a>; MAX_SIGNER_MESSAGES]) -> usize {
@@ -244,6 +280,26 @@ pub fn verify_credential(pk: &[u8], kid: &[u8], epoch: u64, sig: &[u8], msgs: &[
     let e = epoch.to_be_bytes();
     let mut m = [Msg::Hash(&[]); MAX_SIGNER_MESSAGES];
     let n = bound(kid, &e, msgs, &mut m);
+    let mut b = [Msg::Hash(&[]); MAX_BLIND_MESSAGES];
+    for (i, x) in blind_msgs.iter().enumerate() {
+        b[i] = Msg::Hash(*x);
+    }
+    blind::verify_blind_sign(pk, sig, CREDENTIAL_HEADER, &m[..n], &b[..blind_msgs.len()], prover_blind)
+}
+
+/// Guest-side check of a slot credential before it is kept.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_slot_credential(
+    pk: &[u8], kid: &[u8], epoch: u64, sig: &[u8], slot: u64, msgs: &[&[u8]], blind_msgs: &[&[u8]], prover_blind: &Scalar,
+) -> Result<()> {
+    let kid = key_id(kid)?;
+    if msgs.len() > MAX_SLOT_MESSAGES || blind_msgs.len() > MAX_BLIND_MESSAGES {
+        return Err(Error::TooLarge);
+    }
+    let e = epoch.to_be_bytes();
+    let s = slot.to_be_bytes();
+    let mut m = [Msg::Hash(&[]); MAX_SIGNER_MESSAGES];
+    let n = slot_bound(kid, &e, &s, msgs, &mut m);
     let mut b = [Msg::Hash(&[]); MAX_BLIND_MESSAGES];
     for (i, x) in blind_msgs.iter().enumerate() {
         b[i] = Msg::Hash(*x);

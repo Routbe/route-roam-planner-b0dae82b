@@ -45,10 +45,36 @@ export type ZkExports = {
   rout_zk_hostkey_verify_credential(
     pk: number, kid: number, kidLen: number, epoch: bigint, sig: number, msgs: number, msgsLen: number, bmsgs: number, bmsgsLen: number, proverBlind: number,
   ): number;
+  rout_zk_commit(msgs: number, msgsLen: number, out: number, outCap: number, outBlind: number): number;
+  rout_zk_keygen(km: number, kmLen: number, info: number, infoLen: number, outSk: number, outPk: number): number;
+  rout_zk_sign(sk: number, pk: number, h: number, hLen: number, msgs: number, msgsLen: number, out: number): number;
+  rout_zk_verify(pk: number, sig: number, h: number, hLen: number, msgs: number, msgsLen: number): number;
+  rout_zk_hostkey_sign_slot(
+    state: number, epoch: bigint, kid: number, kidLen: number, cwp: number, cwpLen: number, slot: bigint, msgs: number, msgsLen: number, outSig: number,
+  ): number;
+  rout_zk_hostkey_verify_slot_credential(
+    pk: number, kid: number, kidLen: number, epoch: bigint, sig: number, slot: bigint, msgs: number, msgsLen: number, bmsgs: number, bmsgsLen: number,
+    proverBlind: number,
+  ): number;
+  rout_zk_anon_present(
+    pk: number, kid: number, kidLen: number, epoch: bigint, sig: number, slot: bigint, msgs: number, msgsLen: number, nf: number, proverBlind: number,
+    ch: number, chLen: number, lo: bigint, hi: bigint, out: number, outCap: number,
+  ): number;
+  rout_zk_anon_verify_presentation(
+    pk: number, kid: number, kidLen: number, epoch: bigint, proof: number, proofLen: number, msgs: number, msgsLen: number, nf: number,
+    ch: number, chLen: number, lo: bigint, hi: bigint,
+  ): number;
+  rout_zk_capacity_open(km: number, pool: number, poolLen: number, capacity: bigint, outC: number, outProof: number): number;
+  rout_zk_capacity_verify_open(c: number, pool: number, poolLen: number, proof: number): number;
+  rout_zk_capacity_take(km: number, pool: number, poolLen: number, step: bigint, before: bigint, take: bigint, outTake: number, outRem: number, outProofs: number): number;
+  rout_zk_capacity_verify_take(before: number, take: number, after: number, pool: number, poolLen: number, step: bigint, proofs: number): number;
 };
 
-/** ABI 4 = BBS / Blind BBS / pseudonym (7a) + Pedersen and range proofs (7b) + Poseidon SMT with signed roots (7c) + forward-secure host keys (7d). */
-export const ZK_ENGINE_ABI = 4;
+/**
+ * ABI 5 = BBS / Blind BBS / pseudonym (7a) + Pedersen and range proofs (7b) + Poseidon SMT with signed roots (7c)
+ * + forward-secure host keys (7d) + slot credentials, anonymous window presentations and capacity pools (7f).
+ */
+export const ZK_ENGINE_ABI = 5;
 /** Linked as --initial-memory = --max-memory = 2 MiB (1 MiB stack first). */
 export const ZK_ENGINE_PAGES = 32;
 const PAGE = 65_536;

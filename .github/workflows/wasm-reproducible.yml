@@ -58,3 +58,37 @@ jobs:
             echo '### Wasm reproducible build'
             echo "pin: \`$(grep -oE '[0-9a-f]{96}' src/lib/crypto-enclave/opaque-wasm-pin.ts | head -1)\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  rout-zk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned toolchain (wasm/rout-zk/rust-toolchain.toml)
+        working-directory: wasm/rout-zk
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown --no-self-update
+          rustc -vV
+
+      - name: Engine tests (fixtures, 7a-7f)
+        working-directory: wasm/rout-zk
+        run: cargo test --release --locked
+
+      - name: Committed module, base64 copy and pin agree
+        run: |
+          set -euo pipefail
+          WASM=src/lib/crypto-enclave/wasm/rout-zk.wasm
+          PINNED="$(grep -oE '[0-9a-f]{96}' src/lib/crypto-enclave/zk-wasm-pin.ts | head -1)"
+          HAVE="$(sha384sum "$WASM" | cut -d' ' -f1)"
+          test "$HAVE" = "$PINNED" || { echo "committed .wasm $HAVE != pin $PINNED"; exit 1; }
+          sed -n 's/^  "\([A-Za-z0-9+/=]*\)";$/\1/p' src/lib/crypto-enclave/zk-wasm-bytes.ts | base64 -d > "$RUNNER_TEMP/embedded.wasm"
+          cmp "$RUNNER_TEMP/embedded.wasm" "$WASM"
+
+      - name: Rebuild from source and compare (build.sh --check)
+        run: wasm/rout-zk/build.sh --check
+
+      - name: Rebuild a second time in a fresh target dir (determinism)
+        run: wasm/rout-zk/build.sh --check

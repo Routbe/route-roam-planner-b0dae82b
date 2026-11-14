@@ -231,6 +231,31 @@ export const enclave = {
       callEnclave("smt.verify_non_membership", { userId, signedRoot: copyRoot(signedRoot), nullifier: nullifier.slice(), siblings: siblings.slice() }),
     verifySignedRoot: (userId: string, signedRoot: SignedRoot) => callEnclave("smt.verify_signed_root", { userId, signedRoot: copyRoot(signedRoot) }),
   },
+  anonGuest: {
+    begin: (hostId: string, keyId: string) => callEnclave("anon_guest.begin", { hostId, keyId }),
+    accept: (input: { handle: string; anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; slot: number; messages: Uint8Array[]; signature: Uint8Array }) =>
+      callEnclave("anon_guest.accept", { ...input, anchor: { keyId: input.anchor.keyId, publicKey: input.anchor.publicKey.slice() }, links: copyLinks(input.links), messages: input.messages.map((m) => m.slice()), signature: input.signature.slice() }),
+    present: (handle: string, challenge: Uint8Array, windowStart: number, windowEnd: number) =>
+      callEnclave("anon_guest.present", { handle, challenge: challenge.slice(), windowStart, windowEnd }),
+    discard: (handle: string) => callEnclave("anon_guest.discard", { handle }),
+  },
+  anonHost: {
+    verifyPresentation: (input: {
+      anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; minEpoch?: number; presentation: Uint8Array; messages: Uint8Array[];
+      nullifier: Uint8Array; challenge: Uint8Array; windowStart: number; windowEnd: number;
+    }) =>
+      callEnclave("anon_host.verify_presentation", {
+        ...input, anchor: { keyId: input.anchor.keyId, publicKey: input.anchor.publicKey.slice() }, links: copyLinks(input.links),
+        presentation: input.presentation.slice(), messages: input.messages.map((m) => m.slice()), nullifier: input.nullifier.slice(), challenge: input.challenge.slice(),
+      }),
+  },
+  capacity: {
+    open: (userId: string, poolId: string, capacity: number) => callEnclave("capacity.open", { userId, poolId, capacity }),
+    take: (userId: string, poolId: string, step: number, remainingBefore: number, take: number) => callEnclave("capacity.take", { userId, poolId, step, remainingBefore, take }),
+    verifyOpen: (poolId: string, commitment: Uint8Array, proof: Uint8Array) => callEnclave("capacity.verify_open", { poolId, commitment: commitment.slice(), proof: proof.slice() }),
+    verifyTake: (poolId: string, step: number, before: Uint8Array, take: Uint8Array, after: Uint8Array, proof: Uint8Array) =>
+      callEnclave("capacity.verify_take", { poolId, step, before: before.slice(), take: take.slice(), after: after.slice(), proof: proof.slice() }),
+  },
   hostKey: {
     /** New forward-secure key chain `keyId` for this member; returns the anchor PK_0 to publish. */
     init: (userId: string, keyId: string) => callEnclave("host_key.init", { userId, keyId }),
@@ -240,6 +265,12 @@ export const enclave = {
     signCredential: (userId: string, keyId: string, epoch: number, messages: Uint8Array[], commitmentWithProof?: Uint8Array) =>
       callEnclave("host_key.sign_credential", { userId, keyId, epoch, messages: messages.map((m) => m.slice()), ...(commitmentWithProof ? { commitmentWithProof: commitmentWithProof.slice() } : {}) }),
     chain: (userId: string, keyId: string) => callEnclave("host_key.chain", { userId, keyId }),
+    /** Re-installs a chain from its device-sealed state after a reload; checked against the published chain. */
+    restore: (input: { userId: string; keyId: string; epoch: number; sealedState: Uint8Array; anchor: HostKeyAnchor; links: EpochLink[] }) =>
+      callEnclave("host_key.restore", { ...input, sealedState: input.sealedState.slice(), anchor: { keyId: input.anchor.keyId, publicKey: input.anchor.publicKey.slice() }, links: copyLinks(input.links) }),
+    /** Slot credential for a guest commitment under the current epoch key. */
+    signSlotCredential: (userId: string, keyId: string, epoch: number, slot: number, messages: Uint8Array[], commitmentWithProof: Uint8Array) =>
+      callEnclave("host_key.sign_slot_credential", { userId, keyId, epoch, slot, messages: messages.map((m) => m.slice()), commitmentWithProof: commitmentWithProof.slice() }),
     /** Guest side; `proverBlind` is transferred (the caller's copy is emptied). */
     verifyEpochCredential: (input: {
       anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; minEpoch?: number; signature: Uint8Array; messages: Uint8Array[];
