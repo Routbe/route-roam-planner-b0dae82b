@@ -20,10 +20,12 @@ describe("committed rout-zk engine", () => {
     expect(WebAssembly.Module.imports(module).map((i) => `${i.module}.${i.name}:${i.kind}`).sort()).toEqual(["env.memory:memory", "env.rout_random:function"]);
     expect(ZK_ENGINE_ABI).toBe(5);
     expect(await withZkFrame((f) => f.ex.rout_zk_abi_version())).toBe(5);
-    // 0x40 0x00 is memory.grow; the code section must not contain it as an instruction. Checked by the
-    // loader's memory: initial == maximum, so any grow would trap. Here: the memory import is fixed-size.
-    const mem = WebAssembly.Module.imports(module).find((i) => i.kind === "memory");
-    expect(mem).toBeDefined();
+    expect(WebAssembly.Module.exports(module).some((e) => e.kind === "memory")).toBe(false);
+    const wabt = await (await import("wabt")).default();
+    const text = wabt.readWasm(readFileSync(join(__dirname, "wasm", "rout-zk.wasm")), { readDebugNames: false }).toText({});
+    expect(text).not.toMatch(/memory\.grow/);
+    const limits = /\(import "env" "memory" \(memory \(;\d+;\) (\d+) (\d+)\)\)/.exec(text);
+    expect(limits?.slice(1).map(Number)).toEqual([ZK_ENGINE_PAGES, ZK_ENGINE_PAGES]);
     expect(ZK_ENGINE_PAGES).toBe(32);
   });
 });
