@@ -175,8 +175,24 @@ export interface EnclaveOps {
    * key and refuses a key id the worker already holds. Credentials are signed
    * only for the current epoch: a request for any other epoch is refused.
    */
-  "host_key.init": { req: { userId: string; keyId: string }; res: { anchor: HostKeyAnchor; epoch: number } };
-  "host_key.advance_epoch": { req: { userId: string; keyId: string; toEpoch: number }; res: { epoch: number; publicKey: Uint8Array; link: EpochLink } };
+  "host_key.init": { req: { userId: string; keyId: string }; res: { anchor: HostKeyAnchor; epoch: number; sealedState: Uint8Array } };
+  "host_key.advance_epoch": { req: { userId: string; keyId: string; toEpoch: number }; res: { epoch: number; publicKey: Uint8Array; link: EpochLink; sealedState: Uint8Array } };
+  /**
+   * Stap 7f: `sealedState` (init / advance) is SK_t || epoch sealed to this
+   * member's own device key (RVE1 kind hsk, holder member_device), the only
+   * form the database stores. restore opens it, recomputes PK_t and accepts it
+   * only if the published chain from the anchor ends at exactly that key and
+   * the epoch is not below what this worker already held.
+   */
+  "host_key.restore": {
+    req: { userId: string; keyId: string; epoch: number; sealedState: Uint8Array; anchor: HostKeyAnchor; links: EpochLink[] };
+    res: { epoch: number; publicKey: Uint8Array };
+  };
+  /** Slot credential (7f) over [key id, epoch, RAW slot, messages..] for a guest commitment; current epoch only. */
+  "host_key.sign_slot_credential": {
+    req: { userId: string; keyId: string; epoch: number; slot: number; messages: Uint8Array[]; commitmentWithProof: Uint8Array };
+    res: { epoch: number; publicKey: Uint8Array; signature: Uint8Array };
+  };
   "host_key.sign_credential": {
     req: { userId: string; keyId: string; epoch: number; messages: Uint8Array[]; commitmentWithProof?: Uint8Array };
     res: { epoch: number; publicKey: Uint8Array; signature: Uint8Array };
@@ -200,6 +216,40 @@ export interface EnclaveOps {
       committedMessages?: Uint8Array[];
       proverBlind?: Uint8Array;
     };
+    res: { valid: boolean };
+  };
+  /**
+   * Anonymous guest booking (Stap 7f, anon-booking.ts). The nullifier, booking
+   * nonce, per-booking seed and prover blind exist only in the worker under
+   * `handle`; the UI gets the commitment, the per-booking pseudonym and, at
+   * arrival, the presentation with the disclosed nullifier.
+   */
+  "anon_guest.begin": { req: { hostId: string; keyId: string }; res: { handle: string; commitmentWithProof: Uint8Array; pseudonym: Uint8Array } };
+  "anon_guest.accept": {
+    req: { handle: string; anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; slot: number; messages: Uint8Array[]; signature: Uint8Array };
+    res: { valid: boolean };
+  };
+  "anon_guest.present": {
+    req: { handle: string; challenge: Uint8Array; windowStart: number; windowEnd: number };
+    res: { presentation: Uint8Array; nullifier: Uint8Array; pseudonym: Uint8Array; keyId: string; epoch: number; messages: Uint8Array[] };
+  };
+  "anon_guest.discard": { req: { handle: string }; res: { discarded: boolean } };
+  "anon_host.verify_presentation": {
+    req: {
+      anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; minEpoch?: number; presentation: Uint8Array; messages: Uint8Array[];
+      nullifier: Uint8Array; challenge: Uint8Array; windowStart: number; windowEnd: number;
+    };
+    res: { valid: boolean };
+  };
+  /** Seat pools (7f): blindings from this member's device seed, counts hidden in Pedersen commitments. */
+  "capacity.open": { req: { userId: string; poolId: string; capacity: number }; res: { commitment: Uint8Array; proof: Uint8Array } };
+  "capacity.take": {
+    req: { userId: string; poolId: string; step: number; remainingBefore: number; take: number };
+    res: { takeCommitment: Uint8Array; remainingCommitment: Uint8Array; proof: Uint8Array };
+  };
+  "capacity.verify_open": { req: { poolId: string; commitment: Uint8Array; proof: Uint8Array }; res: { valid: boolean } };
+  "capacity.verify_take": {
+    req: { poolId: string; step: number; before: Uint8Array; take: Uint8Array; after: Uint8Array; proof: Uint8Array };
     res: { valid: boolean };
   };
   "protocol.verifyChain": { req: { events: SignedEvent[] }; res: { ok: true } | { ok: false; error: string; at: number } };

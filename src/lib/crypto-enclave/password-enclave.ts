@@ -19,6 +19,7 @@
  * non-extractable AES-GCM "password vault key" (HKDF-SHA-256) and is wiped.
  */
 import { wipeZkEngineMemory } from "./zk-engine";
+import { guestBookings } from "./anon-booking";
 import { epochChains, hostKeys } from "./forward-secure";
 import { wipe } from "@/lib/crypto/wipe";
 import { fail } from "./enclave-failure";
@@ -238,6 +239,7 @@ export function wipeAllPasswordState(): number {
   n += wipeEngineMemory();
   n += wipeZkEngineMemory();
   n += hostKeys.wipeAll();
+  n += guestBookings.wipeAll();
   epochChains.clear();
   return n;
 }
