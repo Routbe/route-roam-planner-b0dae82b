@@ -9,7 +9,11 @@ import "fake-indexeddb/auto";
 import { readFileSync } from "node:fs";
 import { expand } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The committed engine is pinned (zk-wasm-pin.ts); these tests cover the refusal path without one.
+vi.mock("./zk-wasm-pin", () => ({ ROUT_ZK_WASM_SHA384: null }));
+vi.mock("./zk-wasm-bytes", () => ({ ROUT_ZK_WASM_BASE64: null }));
 import { runEnclaveOp } from "./enclave-core";
 import { PSEUDONYM_INFO } from "./pseudonyms";
 import { RootWatermarks, SMT_EMPTY_ROOT_HEX, SMT_SIBLINGS_BYTES, smtSignerKeyMaterial, type SignedRoot } from "./smt";

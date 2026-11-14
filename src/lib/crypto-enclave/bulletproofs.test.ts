@@ -5,7 +5,11 @@
  * inputs are wiped either way.
  */
 import "fake-indexeddb/auto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The committed engine is pinned (zk-wasm-pin.ts); these tests cover the refusal path without one.
+vi.mock("./zk-wasm-pin", () => ({ ROUT_ZK_WASM_SHA384: null }));
+vi.mock("./zk-wasm-bytes", () => ({ ROUT_ZK_WASM_BASE64: null }));
 import { encodeRangeValue, RANGE_PROOF_BYTES } from "./bulletproofs";
 import { runEnclaveOp } from "./enclave-core";
 import { zkEngineModule } from "./zk-engine";
@@ -15,7 +19,7 @@ import { ROUT_ZK_WASM_SHA384 } from "./zk-wasm-pin";
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 
 describe("rout-zk loader without a pin", () => {
-  it("has no pin and no bytes yet, and refuses before compiling", async () => {
+  it("without a pin and bytes the loader refuses before compiling", async () => {
     expect(ROUT_ZK_WASM_SHA384).toBeNull();
     expect(ROUT_ZK_WASM_BASE64).toBeNull();
     await expect(zkEngineModule()).rejects.toMatchObject({ code: "zk_engine_unpinned" });

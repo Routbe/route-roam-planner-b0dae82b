@@ -1,5 +1,9 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// The committed engine is pinned (zk-wasm-pin.ts); these tests cover the refusal path without one.
+vi.mock("./zk-wasm-pin", () => ({ ROUT_ZK_WASM_SHA384: null }));
+vi.mock("./zk-wasm-bytes", () => ({ ROUT_ZK_WASM_BASE64: null }));
 import { anonVerifyPresentation, capacityKeyMaterial, capacityOpen, GuestBookingStore, guestCommit, PRESENTATION_MIN_BYTES } from "./anon-booking";
 import { HSK_ENVELOPE_BYTES, HSK_PLAINTEXT_BYTES, hskContext, hskPlaintext, parseHskPlaintext } from "./forward-secure";
 import { EnvelopePolicyError, generateRecipientKeys, openEnvelope, sealEnvelope } from "./pqc-envelope";
