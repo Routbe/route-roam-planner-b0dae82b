@@ -7,15 +7,40 @@
 --                                (bound to the host row and signed by the
 --                                enclave), current epoch and PK_t
 --   anon_host_key_states         the current ratchet state SK_t, only as an
---                                RVE1 envelope (kind 9 hsk, holder 1 server
---                                vault, owner decision 2026-11-14); replaced
---                                in place on every advance, never kept twice
+--                                RVE1 envelope (kind 9 hsk, holder 2 member
+--                                device: sealed in the host's crypto worker to
+--                                the host's own device key, owner decision 7f,
+--                                superseding the server-vault holder of 7e);
+--                                replaced in place on every advance, never
+--                                kept twice; neither the database, the server
+--                                vault nor ROUT_VAULT_KEK can open it
 --   anon_epoch_links             PK_t -> PK_t' links signed by the old epoch key
 --   anon_smt_trees / _roots      the nullifier tree of a chain and its signed
 --                                root per tree epoch (one row per insertion)
 --   anon_booking_tokens          a spent nullifier, the host-scoped pseudonym,
 --                                the credential epoch and the BBS presentation
 --   anon_pseudonym_invalidations pseudonyms a host has invalidated
+--   anon_capacity_pools          a seat pool: Pedersen commitment to the
+--                                capacity (with range proof) and the current
+--                                remainder commitment; counts stay hidden
+--   anon_ledger_events           one hash chain per tree over every mutation
+--                                (genesis, pool_open, booking, invalidate,
+--                                retire): root epoch and SMT root, pool step
+--                                with take/remainder commitments and the
+--                                1856-byte capacity proof, nullifier and
+--                                pseudonym; kept apart from 0265's ledger
+--
+-- Account lifecycle (Stap 7f). No anon_* row is ever deleted by a cascade:
+-- every foreign key is ON DELETE RESTRICT, so a purge or merge that forgot a
+-- table fails instead of silently dropping spent nullifiers (which would let a
+-- guest re-spend) or history. public.rout_anon_booking_purge (only inside the
+-- due purge transaction) retires the host's live chain, deletes every sealed
+-- state and detaches the chains from the account (host_user_id null,
+-- purged_at set); chains, links, roots, tokens, pools and ledger stay, holding
+-- no identity. public.rout_anon_booking_merge (only from
+-- execute_account_merge) retires the secondary's live chain, deletes its
+-- sealed state and moves its unchanged historic chains to the primary; the
+-- primary keeps its own live chain.
 --
 -- The database cannot run pairings: it does NOT verify BBS signatures or
 -- proofs. It enforces what it can prove itself: the caller from the
@@ -50,24 +75,30 @@ alter table vault_enclave.audit_logs add constraint audit_logs_action_check
                     'recovery_v4_replay', 'recovery_v4_compromise', 'recovery_v4_server_share',
                     'anon_host_key_init', 'anon_host_key_advance', 'anon_host_key_retire',
                     'anon_host_state_read', 'anon_booking_record', 'anon_booking_check',
-                    'anon_pseudonym_invalidate'));
+                    'anon_pseudonym_invalidate', 'anon_capacity_open', 'anon_ledger_read',
+                    'anon_host_purge', 'anon_host_merge'));
 
 -- ---------------------------------------------------------------- shape helpers
 
--- RVE1 envelope of the ratchet state: magic, suite 1, kind 9 (hsk), holder 1
--- (server vault); 1663 bytes of envelope overhead + the 32-byte state.
+-- RVE1 envelope of the ratchet state: magic, suite 1, kind 9 (hsk), holder 2
+-- (member device); 1663 bytes of envelope overhead + 40 bytes of plaintext
+-- (SK_t 32 || I2OSP(epoch, 8), forward-secure.ts HSK_PLAINTEXT_BYTES).
 create function vault_enclave.anon_is_hsk(p_env bytea) returns boolean
 language sql immutable set search_path = pg_catalog, pg_temp as $$
-  select p_env is not null and octet_length(p_env) = 1695
+  select p_env is not null and octet_length(p_env) = 1703
      and substring(p_env from 1 for 4) = '\x52564531'::bytea
-     and pg_catalog.get_byte(p_env, 4) = 1 and pg_catalog.get_byte(p_env, 5) = 9 and pg_catalog.get_byte(p_env, 6) = 1
+     and pg_catalog.get_byte(p_env, 4) = 1 and pg_catalog.get_byte(p_env, 5) = 9 and pg_catalog.get_byte(p_env, 6) = 2
 $$;
 
--- BBS presentation (core_bbs PROOF_MIN_LEN 272 + 32 per undisclosed message,
--- at most MAX_MESSAGES = 49 of them).
+-- Anonymous presentation (wasm/rout-zk anon.rs): I2OSP(bbs_len, 8) || BBS
+-- proof (272 + 32 per undisclosed message, at most 49) || one committed
+-- disclosure (48 + 32) || two 928-byte range proofs. The length prefix must
+-- match the encoding exactly.
 create function vault_enclave.anon_is_proof(p bytea) returns boolean
 language sql immutable set search_path = pg_catalog, pg_temp as $$
-  select p is not null and octet_length(p) between 272 and 1840 and (octet_length(p) - 272) % 32 = 0
+  select p is not null and octet_length(p) between 8 + 272 + 80 + 1856 and 8 + 1840 + 80 + 1856
+     and (octet_length(p) - 8 - 80 - 1856 - 272) % 32 = 0
+     and ('x' || pg_catalog.encode(substring(p from 1 for 8), 'hex'))::bit(64)::bigint = octet_length(p) - 8 - 80 - 1856
 $$;
 
 create function vault_enclave.anon_len(p bytea, n integer) returns boolean
@@ -75,7 +106,8 @@ language sql immutable set search_path = pg_catalog, pg_temp as $$
   select p is not null and octet_length(p) = n
 $$;
 
--- Opaque random ids: hk_ (host chain) and st_ (nullifier tree), 256 bits hex.
+-- Opaque random ids: hk_ (host chain), st_ (nullifier tree) and cp_ (capacity
+-- pool), 256 bits hex.
 create function vault_enclave.anon_id_ok(p_id text, p_prefix text) returns boolean
 language sql immutable set search_path = pg_catalog, pg_temp as $$
   select p_id is not null and p_id ~ ('^' || p_prefix || '_[0-9a-f]{64}$')
@@ -90,7 +122,7 @@ $$;
 
 create table vault_enclave.anon_host_keys (
   key_id text primary key,
-  host_user_id uuid not null references public.users(id) on delete cascade,
+  host_user_id uuid references public.users(id) on delete restrict,
   anchor_pk bytea not null,
   anchor_signer_pk bytea not null,
   anchor_sig bytea not null,
@@ -100,6 +132,10 @@ create table vault_enclave.anon_host_keys (
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
   updated_at timestamptz not null default pg_catalog.clock_timestamp(),
   retired_at timestamptz,
+  purged_at timestamptz,
+  -- Detached from an account only by the purge, and only once retired.
+  constraint anon_host_keys_owner check ((host_user_id is null) = (purged_at is not null)
+                                         and (purged_at is null or retired_at is not null)),
   constraint anon_host_keys_id check (vault_enclave.anon_id_ok(key_id, 'hk')),
   constraint anon_host_keys_len check (octet_length(anchor_pk) = 96 and octet_length(anchor_signer_pk) = 96
                                        and octet_length(anchor_sig) = 80 and octet_length(current_pk) = 96),
@@ -110,14 +146,14 @@ create table vault_enclave.anon_host_keys (
 create unique index anon_host_keys_one_active on vault_enclave.anon_host_keys (host_user_id) where retired_at is null;
 
 create table vault_enclave.anon_host_key_states (
-  key_id text primary key references vault_enclave.anon_host_keys(key_id) on delete cascade,
+  key_id text primary key references vault_enclave.anon_host_keys(key_id) on delete restrict,
   state_envelope bytea not null,
   updated_at timestamptz not null default pg_catalog.clock_timestamp(),
   constraint anon_host_key_states_env check (vault_enclave.anon_is_hsk(state_envelope))
 );
 
 create table vault_enclave.anon_epoch_links (
-  key_id text not null references vault_enclave.anon_host_keys(key_id) on delete cascade,
+  key_id text not null references vault_enclave.anon_host_keys(key_id) on delete restrict,
   from_epoch bigint not null,
   to_epoch bigint not null,
   next_pk bytea not null,
@@ -133,17 +169,19 @@ create table vault_enclave.anon_epoch_links (
 
 create table vault_enclave.anon_smt_trees (
   tree_id text primary key,
-  key_id text not null unique references vault_enclave.anon_host_keys(key_id) on delete cascade,
+  key_id text not null unique references vault_enclave.anon_host_keys(key_id) on delete restrict,
   root_signer_pk bytea not null,
   head_epoch bigint not null default 0,
+  ledger_seq bigint not null default 0,
+  ledger_head bytea not null,
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
   constraint anon_smt_trees_id check (vault_enclave.anon_id_ok(tree_id, 'st')),
-  constraint anon_smt_trees_len check (octet_length(root_signer_pk) = 96),
+  constraint anon_smt_trees_len check (octet_length(root_signer_pk) = 96 and octet_length(ledger_head) = 32 and ledger_seq >= 0),
   constraint anon_smt_trees_head check (head_epoch >= 0)
 );
 
 create table vault_enclave.anon_smt_roots (
-  tree_id text not null references vault_enclave.anon_smt_trees(tree_id) on delete cascade,
+  tree_id text not null references vault_enclave.anon_smt_trees(tree_id) on delete restrict,
   epoch bigint not null,
   root bytea not null,
   root_sig bytea not null,
@@ -165,7 +203,7 @@ create table vault_enclave.anon_booking_tokens (
   presentation bytea not null,
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
   constraint anon_booking_tokens_root foreign key (tree_id, root_epoch)
-    references vault_enclave.anon_smt_roots(tree_id, epoch) on delete cascade,
+    references vault_enclave.anon_smt_roots(tree_id, epoch) on delete restrict,
   -- A nullifier is spent once per tree; each insertion is exactly one root step.
   constraint anon_booking_tokens_nullifier unique (tree_id, nullifier),
   constraint anon_booking_tokens_pseudonym unique (tree_id, pseudonym),
@@ -181,16 +219,71 @@ create table vault_enclave.anon_pseudonym_invalidations (
   invalidated_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (tree_id, pseudonym),
   constraint anon_pseudonym_invalidations_token foreign key (tree_id, pseudonym)
-    references vault_enclave.anon_booking_tokens(tree_id, pseudonym) on delete cascade,
+    references vault_enclave.anon_booking_tokens(tree_id, pseudonym) on delete restrict,
   constraint anon_pseudonym_invalidations_reason check (reason in ('cancelled', 'no_show', 'abuse', 'guest_request'))
 );
 
--- History rows are append-only: no UPDATE, no direct DELETE or TRUNCATE. A
--- delete cascading from the host's account (trigger depth > 1) still passes.
+-- A seat pool of one tree. The capacity and every count stay hidden in
+-- Pedersen commitments; the database keeps the remainder commitment and the
+-- step counter for compare-and-swap, the worker checks the proofs.
+create table vault_enclave.anon_capacity_pools (
+  pool_id text primary key,
+  tree_id text not null references vault_enclave.anon_smt_trees(tree_id) on delete restrict,
+  opened_commitment bytea not null,
+  opened_proof bytea not null,
+  remaining_commitment bytea not null,
+  step bigint not null default 0,
+  created_at timestamptz not null default pg_catalog.clock_timestamp(),
+  updated_at timestamptz not null default pg_catalog.clock_timestamp(),
+  constraint anon_capacity_pools_id check (vault_enclave.anon_id_ok(pool_id, 'cp')),
+  -- anon.rs MAX_TAKES = 65536.
+  constraint anon_capacity_pools_shape check (octet_length(opened_commitment) = 48 and octet_length(opened_proof) = 928
+    and octet_length(remaining_commitment) = 48 and step between 0 and 65536)
+);
+
+-- One hash chain per tree over every mutation (anon_ledger_hash).
+create table vault_enclave.anon_ledger_events (
+  tree_id text not null references vault_enclave.anon_smt_trees(tree_id) on delete restrict,
+  seq bigint not null,
+  kind text not null,
+  root_epoch bigint not null,
+  smt_root bytea not null,
+  pool_id text references vault_enclave.anon_capacity_pools(pool_id) on delete restrict,
+  pool_step bigint,
+  take_commitment bytea,
+  remaining_commitment bytea,
+  proof bytea,
+  nullifier bytea,
+  pseudonym bytea,
+  prev_hash bytea not null,
+  event_hash bytea not null,
+  created_at timestamptz not null default pg_catalog.clock_timestamp(),
+  primary key (tree_id, seq),
+  constraint anon_ledger_events_hash unique (event_hash),
+  constraint anon_ledger_events_kind check (kind in ('genesis', 'pool_open', 'booking', 'invalidate', 'retire')),
+  constraint anon_ledger_events_len check (seq >= 0 and root_epoch >= 0 and octet_length(smt_root) = 32
+    and octet_length(prev_hash) = 32 and octet_length(event_hash) = 32
+    and (take_commitment is null or octet_length(take_commitment) = 48)
+    and (remaining_commitment is null or octet_length(remaining_commitment) = 48)
+    and (nullifier is null or octet_length(nullifier) = 32) and (pseudonym is null or octet_length(pseudonym) = 32)),
+  constraint anon_ledger_events_shape check (case kind
+    when 'genesis' then seq = 0 and prev_hash = '\x0000000000000000000000000000000000000000000000000000000000000000'::bytea
+      and pool_id is null and nullifier is null and pseudonym is null and proof is null
+    when 'pool_open' then pool_id is not null and pool_step = 0 and take_commitment is null
+      and remaining_commitment is not null and octet_length(proof) = 928 and nullifier is null and pseudonym is null
+    when 'booking' then nullifier is not null and pseudonym is not null and ((pool_id is null and pool_step is null
+      and take_commitment is null and remaining_commitment is null and proof is null)
+      or (pool_id is not null and pool_step >= 1 and take_commitment is not null and remaining_commitment is not null
+      and octet_length(proof) = 1856))
+    when 'invalidate' then pseudonym is not null and pool_id is null and nullifier is null and proof is null
+    else pool_id is null and nullifier is null and pseudonym is null and proof is null end and seq > 0 or kind = 'genesis')
+);
+
+-- History rows are append-only: no UPDATE, no DELETE, no TRUNCATE (there are
+-- no cascades either, so nothing can remove them on the way).
 create function vault_enclave.anon_append_only() returns trigger
 language plpgsql set search_path = pg_catalog, pg_temp as $$
 begin
-  if tg_op = 'DELETE' and pg_catalog.pg_trigger_depth() > 1 then return old; end if;
   raise exception 'anon_append_only' using errcode = '42501';
 end $$;
 
@@ -210,6 +303,24 @@ create trigger anon_pseudonym_invalidations_append_only before update or delete 
   for each row execute function vault_enclave.anon_append_only();
 create trigger anon_pseudonym_invalidations_no_truncate before truncate on vault_enclave.anon_pseudonym_invalidations
   for each statement execute function vault_enclave.anon_append_only();
+create trigger anon_ledger_events_append_only before update or delete on vault_enclave.anon_ledger_events
+  for each row execute function vault_enclave.anon_append_only();
+create trigger anon_ledger_events_no_truncate before truncate on vault_enclave.anon_ledger_events
+  for each statement execute function vault_enclave.anon_append_only();
+-- Pools move forward (remainder, step) but never disappear.
+create trigger anon_capacity_pools_no_delete before delete on vault_enclave.anon_capacity_pools
+  for each row execute function vault_enclave.anon_append_only();
+create trigger anon_capacity_pools_no_truncate before truncate on vault_enclave.anon_capacity_pools
+  for each statement execute function vault_enclave.anon_append_only();
+-- Chains are never deleted (the purge detaches them instead).
+create trigger anon_host_keys_no_delete before delete on vault_enclave.anon_host_keys
+  for each row execute function vault_enclave.anon_append_only();
+create trigger anon_host_keys_no_truncate before truncate on vault_enclave.anon_host_keys
+  for each statement execute function vault_enclave.anon_append_only();
+create trigger anon_smt_trees_no_delete before delete on vault_enclave.anon_smt_trees
+  for each row execute function vault_enclave.anon_append_only();
+create trigger anon_smt_trees_no_truncate before truncate on vault_enclave.anon_smt_trees
+  for each statement execute function vault_enclave.anon_append_only();
 
 -- No rights for anyone but the owner, on every table of the schema.
 revoke all on all tables in schema vault_enclave from public, rout_app;
@@ -220,6 +331,8 @@ alter table vault_enclave.anon_smt_trees enable row level security;
 alter table vault_enclave.anon_smt_roots enable row level security;
 alter table vault_enclave.anon_booking_tokens enable row level security;
 alter table vault_enclave.anon_pseudonym_invalidations enable row level security;
+alter table vault_enclave.anon_capacity_pools enable row level security;
+alter table vault_enclave.anon_ledger_events enable row level security;
 create policy deny_all on vault_enclave.anon_host_keys as restrictive for all to public using (false) with check (false);
 create policy deny_all on vault_enclave.anon_host_key_states as restrictive for all to public using (false) with check (false);
 create policy deny_all on vault_enclave.anon_epoch_links as restrictive for all to public using (false) with check (false);
@@ -227,6 +340,8 @@ create policy deny_all on vault_enclave.anon_smt_trees as restrictive for all to
 create policy deny_all on vault_enclave.anon_smt_roots as restrictive for all to public using (false) with check (false);
 create policy deny_all on vault_enclave.anon_booking_tokens as restrictive for all to public using (false) with check (false);
 create policy deny_all on vault_enclave.anon_pseudonym_invalidations as restrictive for all to public using (false) with check (false);
+create policy deny_all on vault_enclave.anon_capacity_pools as restrictive for all to public using (false) with check (false);
+create policy deny_all on vault_enclave.anon_ledger_events as restrictive for all to public using (false) with check (false);
 
 -- ---------------------------------------------------------------- internal helpers
 
