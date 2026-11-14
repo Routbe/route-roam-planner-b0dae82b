@@ -842,6 +842,80 @@ language sql stable security definer set search_path = pg_catalog, pg_temp as $$
   from (select 1) d left join vault_enclave.anon_host_keys k on k.key_id = p_key_id
 $$;
 
+-- ---------------------------------------------------------------- account lifecycle
+
+-- Purge of a host account (after the 30-day cooling-off period): retires the
+-- live chain (ledger 'retire'), deletes every sealed state and detaches every
+-- chain from the account. Spent nullifiers, roots, links, pools and ledger
+-- stay: without them a guest could spend a credential again. The audit row
+-- carries no member id. Returns the number of chains detached.
+create function vault_enclave.anon_purge_host(p_user uuid) returns integer
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  k record;
+  n integer := 0;
+begin
+  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_user order by h.key_id for update loop
+    perform vault_enclave.anon_retire_chain(k.key_id);
+    delete from vault_enclave.anon_host_key_states s where s.key_id = k.key_id;
+    update vault_enclave.anon_host_keys set host_user_id = null, purged_at = pg_catalog.clock_timestamp(),
+           updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id;
+    n := n + 1;
+  end loop;
+  if n > 0 then
+    perform vault_enclave.append_audit(null, 'anon_host_purge', 'granted', 'ok', null);
+  end if;
+  return n;
+end $$;
+
+-- Merge of a secondary account into a primary: the secondary's live chain is
+-- retired (its sealed state deleted) and all its chains, unchanged, move to
+-- the primary, which keeps its own live chain. Two ratchet chains cannot be
+-- joined (every link is signed by the previous key), so history stays as it
+-- was signed.
+create function vault_enclave.anon_merge_host(p_primary uuid, p_secondary uuid) returns integer
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  k record;
+  n integer := 0;
+begin
+  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_secondary order by h.key_id for update loop
+    perform vault_enclave.anon_retire_chain(k.key_id);
+    update vault_enclave.anon_host_keys set host_user_id = p_primary, updated_at = pg_catalog.clock_timestamp()
+     where key_id = k.key_id;
+    n := n + 1;
+  end loop;
+  if n > 0 then
+    perform vault_enclave.append_audit(p_primary, 'anon_host_merge', 'granted', 'ok', null);
+  end if;
+  return n;
+end $$;
+
+-- Called by the account purge (src/lib/account-purge.ts) as rout_app inside
+-- the purge transaction; refuses (and so rolls the whole purge back) unless
+-- this account's deletion is due and being purged right now.
+create function public.rout_anon_booking_purge(p_user uuid) returns integer
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+begin
+  if not public.rout_purge_due(p_user) then
+    raise exception 'anon_purge_not_due' using errcode = '42501';
+  end if;
+  return vault_enclave.anon_purge_host(p_user);
+end $$;
+
+-- Called only by execute_account_merge (owner rout_merge_executor), whose
+-- secondary is the signed-in member of the transaction.
+create function public.rout_anon_booking_merge(p_primary uuid, p_secondary uuid) returns integer
+language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+begin
+  if p_primary is null or p_secondary is null or p_primary = p_secondary
+     or vault_enclave.caller_user_id() is distinct from p_secondary
+     or not exists (select 1 from public.users u where u.id = p_primary) then
+    raise exception 'anon_merge_invalid' using errcode = '42501';
+  end if;
+  return vault_enclave.anon_merge_host(p_primary, p_secondary);
+end $$;
+
 -- ---------------------------------------------------------------- rights
 
 revoke all on function vault_enclave.anon_is_hsk(bytea) from public, rout_app;
@@ -852,12 +926,20 @@ revoke all on function vault_enclave.anon_answer(text, boolean, text, bigint, bi
 revoke all on function vault_enclave.anon_append_only() from public, rout_app;
 revoke all on function vault_enclave.anon_caller() from public, rout_app;
 revoke all on function vault_enclave.anon_stepup(uuid, uuid) from public, rout_app;
+revoke all on function vault_enclave.anon_lp(bytea) from public, rout_app;
+revoke all on function vault_enclave.anon_ledger_hash(text, bigint, text, bigint, bytea, text, bigint, bytea, bytea, bytea, bytea, bytea, bytea) from public, rout_app;
+revoke all on function vault_enclave.anon_ledger_append(text, text, text, bigint, bytea, bytea, bytea, bytea, bytea) from public, rout_app;
+revoke all on function vault_enclave.anon_retire_chain(text) from public, rout_app;
+revoke all on function vault_enclave.anon_purge_host(uuid) from public, rout_app;
+revoke all on function vault_enclave.anon_merge_host(uuid, uuid) from public, rout_app;
 
 revoke all on function vault_enclave.anon_host_key_init(uuid, text, bytea, bytea, bytea, bytea, text, bytea, bytea) from public;
 revoke all on function vault_enclave.anon_host_key_advance(text, bigint, bigint, bigint, bytea, bytea, bytea) from public;
 revoke all on function vault_enclave.anon_host_key_state(text) from public;
 revoke all on function vault_enclave.anon_host_key_retire(uuid, text) from public;
-revoke all on function vault_enclave.anon_booking_record(text, bigint, bytea, bytea, bytea, bytea, bigint, bytea) from public;
+revoke all on function vault_enclave.anon_booking_record(text, bigint, bytea, bytea, bytea, bytea, bigint, bytea, text, bigint, bytea, bytea, bytea) from public;
+revoke all on function vault_enclave.anon_capacity_open(text, text, bytea, bytea) from public;
+revoke all on function vault_enclave.anon_ledger(text, bigint, integer) from public;
 revoke all on function vault_enclave.anon_booking_check(text, bytea) from public;
 revoke all on function vault_enclave.anon_pseudonym_invalidate(text, bytea, text) from public;
 revoke all on function vault_enclave.anon_host_chain(text) from public;
@@ -865,10 +947,37 @@ grant execute on function vault_enclave.anon_host_key_init(uuid, text, bytea, by
 grant execute on function vault_enclave.anon_host_key_advance(text, bigint, bigint, bigint, bytea, bytea, bytea) to rout_app;
 grant execute on function vault_enclave.anon_host_key_state(text) to rout_app;
 grant execute on function vault_enclave.anon_host_key_retire(uuid, text) to rout_app;
-grant execute on function vault_enclave.anon_booking_record(text, bigint, bytea, bytea, bytea, bytea, bigint, bytea) to rout_app;
+grant execute on function vault_enclave.anon_booking_record(text, bigint, bytea, bytea, bytea, bytea, bigint, bytea, text, bigint, bytea, bytea, bytea) to rout_app;
+grant execute on function vault_enclave.anon_capacity_open(text, text, bytea, bytea) to rout_app;
+grant execute on function vault_enclave.anon_ledger(text, bigint, integer) to rout_app;
 grant execute on function vault_enclave.anon_booking_check(text, bytea) to rout_app;
 grant execute on function vault_enclave.anon_pseudonym_invalidate(text, bytea, text) to rout_app;
 grant execute on function vault_enclave.anon_host_chain(text) to rout_app;
+revoke all on function public.rout_anon_booking_purge(uuid) from public;
+grant execute on function public.rout_anon_booking_purge(uuid) to rout_app;
+revoke all on function public.rout_anon_booking_merge(uuid, uuid) from public, rout_app;
+grant execute on function public.rout_anon_booking_merge(uuid, uuid) to rout_merge_executor;
+
+-- execute_account_merge: move the secondary's booking chains right before the
+-- secondary user row is deleted (the RESTRICT keys would otherwise stop it).
+do $own$ begin execute pg_catalog.format('grant rout_merge_executor to %I with inherit true, set true', current_user); end $own$;
+grant create on schema public to rout_merge_executor;
+do $m$
+declare
+  v_def text;
+  v_new text;
+begin
+  select pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure) into v_def;
+  if pg_catalog.position('rout_anon_booking_merge' in v_def) > 0 then return; end if;
+  v_new := pg_catalog.regexp_replace(v_def, E'(\\n)([ \\t]*delete from public\\.users where id=v_secondary;)',
+    E'\\1 perform public.rout_anon_booking_merge(v_primary, v_secondary);\n\\2');
+  if v_new = v_def then
+    raise exception 'execute_account_merge: anchor "delete from public.users where id=v_secondary;" not found';
+  end if;
+  execute v_new;
+end $m$;
+revoke create on schema public from rout_merge_executor;
+do $own$ begin execute pg_catalog.format('revoke rout_merge_executor from %I', current_user); end $own$;
 
 -- In-transaction proof: no new table is reachable by rout_app or PUBLIC, each
 -- has RLS on with exactly the restrictive deny_all policy, every new function
@@ -878,7 +987,8 @@ declare v_bad text;
 begin
   select string_agg(t, ', ') into v_bad from unnest(array['vault_enclave.anon_host_keys',
     'vault_enclave.anon_host_key_states', 'vault_enclave.anon_epoch_links', 'vault_enclave.anon_smt_trees',
-    'vault_enclave.anon_smt_roots', 'vault_enclave.anon_booking_tokens', 'vault_enclave.anon_pseudonym_invalidations']) t
+    'vault_enclave.anon_smt_roots', 'vault_enclave.anon_booking_tokens', 'vault_enclave.anon_pseudonym_invalidations',
+    'vault_enclave.anon_capacity_pools', 'vault_enclave.anon_ledger_events']) t
    where pg_catalog.has_table_privilege('rout_app', t, 'select') or pg_catalog.has_table_privilege('rout_app', t, 'insert')
       or pg_catalog.has_table_privilege('rout_app', t, 'update') or pg_catalog.has_table_privilege('rout_app', t, 'delete')
       or pg_catalog.has_table_privilege('public', t, 'select') or pg_catalog.has_table_privilege('public', t, 'insert')
@@ -903,7 +1013,19 @@ begin
   select string_agg(p.proname, ', ') into v_bad from pg_catalog.pg_proc p
    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'vault_enclave' and p.proname = any (array['anon_is_hsk', 'anon_is_proof', 'anon_len', 'anon_id_ok',
-     'anon_answer', 'anon_append_only', 'anon_caller', 'anon_stepup'])
+     'anon_answer', 'anon_append_only', 'anon_caller', 'anon_stepup', 'anon_lp', 'anon_ledger_hash', 'anon_ledger_append',
+     'anon_retire_chain', 'anon_purge_host', 'anon_merge_host'])
      and pg_catalog.has_function_privilege('rout_app', p.oid, 'execute');
   if v_bad is not null then raise exception '0273: rout_app can execute internal helper %', v_bad; end if;
+  -- No foreign key into or between the anonymous tables may cascade.
+  select string_agg(c.conname, ', ') into v_bad from pg_catalog.pg_constraint c
+    join pg_catalog.pg_class r on r.oid = c.conrelid join pg_catalog.pg_namespace n on n.oid = r.relnamespace
+   where n.nspname = 'vault_enclave' and r.relname like 'anon\_%' and c.contype = 'f' and c.confdeltype <> 'r';
+  if v_bad is not null then raise exception '0273: cascading or non-restrict foreign key %', v_bad; end if;
+  if pg_catalog.has_function_privilege('rout_app', 'public.rout_anon_booking_merge(uuid, uuid)', 'execute')
+     or pg_catalog.has_function_privilege('public', 'public.rout_anon_booking_purge(uuid)', 'execute')
+     or pg_catalog.position('rout_anon_booking_merge(v_primary, v_secondary)' in
+          pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure)) = 0 then
+    raise exception '0273: lifecycle functions wrongly granted or merge hook missing';
+  end if;
 end $$;
