@@ -586,18 +586,24 @@ begin
 end $$;
 
 -- Records one anonymous booking on the caller's tree: the nullifier, the
--- host-scoped pseudonym and the presentation, plus the new signed root at
--- head + 1. Order of refusals: unknown, retired, malformed, (replay), spent,
--- pseudonym_taken, epoch (credential epoch without a published key or in the
--- future), conflict (stale head).
+-- per-booking pseudonym and the presentation, the new signed root at head + 1
+-- and, for a pooled slot, the pool step (take and remainder commitments and
+-- the 1856-byte capacity proof, anon.rs) — plus one ledger event, all in one
+-- transaction. Order of refusals: unknown, retired, malformed, (replay),
+-- spent, pseudonym_taken, epoch (credential epoch without a published key or
+-- in the future), pool (unknown pool of this tree), conflict (stale head),
+-- pool_conflict (stale pool step).
 create function vault_enclave.anon_booking_record(
   p_tree_id text, p_head bigint, p_root bytea, p_root_sig bytea, p_nullifier bytea, p_pseudonym bytea,
-  p_credential_epoch bigint, p_presentation bytea)
+  p_credential_epoch bigint, p_presentation bytea,
+  p_pool_id text, p_pool_step bigint, p_take_commitment bytea, p_remaining_commitment bytea, p_capacity_proof bytea)
 returns jsonb language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
 declare
   v_caller uuid := vault_enclave.anon_caller();
   t vault_enclave.anon_smt_trees%rowtype;
   k vault_enclave.anon_host_keys%rowtype;
+  cp vault_enclave.anon_capacity_pools%rowtype;
+  v_pooled boolean := p_pool_id is not null;
   v_why text := 'ok';
 begin
   if v_caller is null then
@@ -608,6 +614,9 @@ begin
    where tr.tree_id = p_tree_id and h.host_user_id = v_caller for update of tr;
   if found then
     select * into k from vault_enclave.anon_host_keys h where h.key_id = t.key_id;
+    if v_pooled then
+      select * into cp from vault_enclave.anon_capacity_pools c where c.pool_id = p_pool_id and c.tree_id = t.tree_id for update;
+    end if;
   end if;
   if t.tree_id is null then
     v_why := 'unknown';
@@ -615,7 +624,12 @@ begin
     v_why := 'retired';
   elsif p_head is null or p_head < 0 or not vault_enclave.anon_len(p_root, 32) or not vault_enclave.anon_len(p_root_sig, 80)
      or not vault_enclave.anon_len(p_nullifier, 32) or not vault_enclave.anon_len(p_pseudonym, 32)
-     or p_credential_epoch is null or p_credential_epoch < 0 or not vault_enclave.anon_is_proof(p_presentation) then
+     or p_credential_epoch is null or p_credential_epoch < 0 or not vault_enclave.anon_is_proof(p_presentation)
+     or (v_pooled and (not vault_enclave.anon_id_ok(p_pool_id, 'cp') or p_pool_step is null or p_pool_step < 1
+          or p_pool_step > 65536 or not vault_enclave.anon_len(p_take_commitment, 48)
+          or not vault_enclave.anon_len(p_remaining_commitment, 48) or not vault_enclave.anon_len(p_capacity_proof, 1856)))
+     or (not v_pooled and (p_pool_step is not null or p_take_commitment is not null or p_remaining_commitment is not null
+          or p_capacity_proof is not null)) then
     v_why := 'malformed';
   elsif exists (select 1 from vault_enclave.anon_booking_tokens b join vault_enclave.anon_smt_roots r
                   on r.tree_id = b.tree_id and r.epoch = b.root_epoch
@@ -631,19 +645,109 @@ begin
   elsif p_credential_epoch > k.epoch or (p_credential_epoch <> 0 and not exists (
           select 1 from vault_enclave.anon_epoch_links l where l.key_id = k.key_id and l.to_epoch = p_credential_epoch)) then
     v_why := 'epoch';
+  elsif v_pooled and cp.pool_id is null then
+    v_why := 'pool';
   elsif p_head <> t.head_epoch then
     v_why := 'conflict';
+  elsif v_pooled and p_pool_step <> cp.step + 1 then
+    v_why := 'pool_conflict';
   end if;
   if v_why <> 'ok' then
     perform vault_enclave.append_audit(v_caller, 'anon_booking_record', 'denied', v_why, null);
-    return vault_enclave.anon_answer('record', false, v_why, t.head_epoch, null);
+    return vault_enclave.anon_answer('record', false, v_why, t.head_epoch, case when v_pooled then cp.step end);
   end if;
   insert into vault_enclave.anon_smt_roots (tree_id, epoch, root, root_sig) values (t.tree_id, p_head + 1, p_root, p_root_sig);
   insert into vault_enclave.anon_booking_tokens (tree_id, root_epoch, nullifier, pseudonym, credential_epoch, presentation)
   values (t.tree_id, p_head + 1, p_nullifier, p_pseudonym, p_credential_epoch, p_presentation);
   update vault_enclave.anon_smt_trees set head_epoch = p_head + 1 where tree_id = t.tree_id;
+  if v_pooled then
+    update vault_enclave.anon_capacity_pools set remaining_commitment = p_remaining_commitment, step = p_pool_step,
+           updated_at = pg_catalog.clock_timestamp() where pool_id = cp.pool_id;
+  end if;
+  perform vault_enclave.anon_ledger_append(t.tree_id, 'booking', p_pool_id, p_pool_step, p_take_commitment,
+                                           p_remaining_commitment, p_capacity_proof, p_nullifier, p_pseudonym);
   perform vault_enclave.append_audit(v_caller, 'anon_booking_record', 'granted', 'ok', null);
-  return vault_enclave.anon_answer('record', true, 'ok', p_head + 1, null);
+  return vault_enclave.anon_answer('record', true, 'ok', p_head + 1, case when v_pooled then p_pool_step end);
+end $$;
+
+-- Opens a seat pool on the caller's live tree: the capacity commitment and its
+-- 928-byte range proof (checked by the worker, anon.rs capacity_open), which
+-- is also the first remainder. Idempotent for the identical request.
+create function vault_enclave.anon_capacity_open(p_tree_id text, p_pool_id text, p_commitment bytea, p_proof bytea)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  v_caller uuid := vault_enclave.anon_caller();
+  t vault_enclave.anon_smt_trees%rowtype;
+  k vault_enclave.anon_host_keys%rowtype;
+  cp vault_enclave.anon_capacity_pools%rowtype;
+  v_why text := 'ok';
+begin
+  if v_caller is null then
+    perform vault_enclave.append_audit(null, 'anon_capacity_open', 'denied', 'no_caller', null);
+    return vault_enclave.anon_answer('pool_open', false, 'no_caller', null, null);
+  end if;
+  select tr.* into t from vault_enclave.anon_smt_trees tr join vault_enclave.anon_host_keys h on h.key_id = tr.key_id
+   where tr.tree_id = p_tree_id and h.host_user_id = v_caller for update of tr;
+  if found then
+    select * into k from vault_enclave.anon_host_keys h where h.key_id = t.key_id;
+  end if;
+  select * into cp from vault_enclave.anon_capacity_pools c where c.pool_id = p_pool_id;
+  if t.tree_id is null then
+    v_why := 'unknown';
+  elsif k.retired_at is not null then
+    v_why := 'retired';
+  elsif not vault_enclave.anon_id_ok(p_pool_id, 'cp') or not vault_enclave.anon_len(p_commitment, 48)
+     or not vault_enclave.anon_len(p_proof, 928) then
+    v_why := 'malformed';
+  elsif cp.pool_id is not null and cp.tree_id = t.tree_id and cp.opened_commitment = p_commitment and cp.opened_proof = p_proof then
+    perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'granted', 'replay', null);
+    return vault_enclave.anon_answer('pool_open', true, 'replay', t.head_epoch, cp.step);
+  elsif cp.pool_id is not null then
+    v_why := 'taken';
+  end if;
+  if v_why <> 'ok' then
+    perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'denied', v_why, null);
+    return vault_enclave.anon_answer('pool_open', false, v_why, t.head_epoch, null);
+  end if;
+  insert into vault_enclave.anon_capacity_pools (pool_id, tree_id, opened_commitment, opened_proof, remaining_commitment)
+  values (p_pool_id, t.tree_id, p_commitment, p_proof, p_commitment);
+  perform vault_enclave.anon_ledger_append(t.tree_id, 'pool_open', p_pool_id, 0, null, p_commitment, p_proof, null, null);
+  perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'granted', 'ok', null);
+  return vault_enclave.anon_answer('pool_open', true, 'ok', t.head_epoch, 0);
+end $$;
+
+-- The caller's own ledger (also of a retired chain), after seq p_after, at most
+-- p_limit (1..500) events, hex encoded, with the current head. Never another
+-- member's tree; a purged chain has no owner and is readable by nobody.
+create function vault_enclave.anon_ledger(p_tree_id text, p_after bigint, p_limit integer)
+returns jsonb language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+declare
+  v_caller uuid := vault_enclave.anon_caller();
+  t vault_enclave.anon_smt_trees%rowtype;
+begin
+  if v_caller is null then
+    perform vault_enclave.append_audit(null, 'anon_ledger_read', 'denied', 'no_caller', null);
+    return vault_enclave.anon_answer('ledger', false, 'no_caller', null, null);
+  end if;
+  select tr.* into t from vault_enclave.anon_smt_trees tr join vault_enclave.anon_host_keys h on h.key_id = tr.key_id
+   where tr.tree_id = p_tree_id and h.host_user_id = v_caller;
+  if not found or p_after is null or p_after < -1 or p_limit is null or p_limit < 1 or p_limit > 500 then
+    perform vault_enclave.append_audit(v_caller, 'anon_ledger_read', 'denied', case when t.tree_id is null then 'unknown' else 'malformed' end, null);
+    return vault_enclave.anon_answer('ledger', false, case when t.tree_id is null then 'unknown' else 'malformed' end, null, null);
+  end if;
+  perform vault_enclave.append_audit(v_caller, 'anon_ledger_read', 'granted', 'ok', null);
+  return vault_enclave.anon_answer('ledger', true, 'ok', t.head_epoch, null) || pg_catalog.jsonb_build_object(
+    'treeId', t.tree_id, 'headSeq', t.ledger_seq, 'headHash', pg_catalog.encode(t.ledger_head, 'hex'),
+    'events', coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+        'seq', e.seq, 'kind', e.kind, 'rootEpoch', e.root_epoch, 'smtRoot', pg_catalog.encode(e.smt_root, 'hex'),
+        'poolId', e.pool_id, 'poolStep', e.pool_step,
+        'takeCommitment', pg_catalog.encode(e.take_commitment, 'hex'),
+        'remainingCommitment', pg_catalog.encode(e.remaining_commitment, 'hex'),
+        'proof', pg_catalog.encode(e.proof, 'hex'), 'nullifier', pg_catalog.encode(e.nullifier, 'hex'),
+        'pseudonym', pg_catalog.encode(e.pseudonym, 'hex'),
+        'prevHash', pg_catalog.encode(e.prev_hash, 'hex'), 'eventHash', pg_catalog.encode(e.event_hash, 'hex')) order by e.seq)
+      from (select * from vault_enclave.anon_ledger_events x where x.tree_id = t.tree_id and x.seq > p_after
+            order by x.seq limit p_limit) e), '[]'::jsonb));
 end $$;
 
 -- Whether a nullifier is spent on the caller's tree, and whether its
@@ -692,7 +796,8 @@ begin
     return vault_enclave.anon_answer('invalidate', false, 'no_caller', null, null);
   end if;
   select tr.tree_id into v_tree from vault_enclave.anon_smt_trees tr
-    join vault_enclave.anon_host_keys h on h.key_id = tr.key_id where tr.tree_id = p_tree_id and h.host_user_id = v_caller;
+    join vault_enclave.anon_host_keys h on h.key_id = tr.key_id where tr.tree_id = p_tree_id and h.host_user_id = v_caller
+    for update of tr;
   if v_tree is null then
     v_why := 'unknown';
   elsif not vault_enclave.anon_len(p_pseudonym, 32) or p_reason is null
@@ -711,6 +816,7 @@ begin
     perform vault_enclave.append_audit(v_caller, 'anon_pseudonym_invalidate', 'granted', 'already', null);
     return vault_enclave.anon_answer('invalidate', true, 'already', null, null);
   end if;
+  perform vault_enclave.anon_ledger_append(v_tree, 'invalidate', null, null, null, null, null, null, p_pseudonym);
   perform vault_enclave.append_audit(v_caller, 'anon_pseudonym_invalidate', 'granted', 'ok', null);
   return vault_enclave.anon_answer('invalidate', true, 'ok', null, null);
 end $$;
