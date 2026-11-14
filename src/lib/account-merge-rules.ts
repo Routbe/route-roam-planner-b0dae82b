@@ -235,3 +235,29 @@ export const MERGE_FAILURE_LIMIT = 5;
 export function mergeAttemptAllowed(failures: number | null): boolean {
   return failures !== null && failures < MERGE_FAILURE_LIMIT;
 }
+
+/**
+ * Anonymous booking engine tables (vault_enclave, db-pending/0273). They are
+ * outside the generated merge SQL: execute_account_merge calls
+ * public.rout_anon_booking_merge right before it deletes the secondary user
+ * row, and every foreign key there is ON DELETE RESTRICT, so a table missing
+ * from this review makes the merge fail instead of losing spent nullifiers.
+ *   close_and_reassign  the secondary's live chain is retired (sealed state
+ *                       deleted, ledger 'retire'); all its chains move to the
+ *                       primary unchanged; the primary keeps its own live chain
+ *   deleted_on_close    the sealed SK_t of a retired chain is removed
+ *   follows_chain       keyed by key/tree/pool id, carries no member id, moves
+ *                       with its chain untouched (signed history stays as signed)
+ */
+export type EnclaveMergeStrategy = "close_and_reassign" | "deleted_on_close" | "follows_chain";
+export const ENCLAVE_MERGE_TABLES: Readonly<Record<string, EnclaveMergeStrategy>> = {
+  anon_host_keys: "close_and_reassign",
+  anon_host_key_states: "deleted_on_close",
+  anon_epoch_links: "follows_chain",
+  anon_smt_trees: "follows_chain",
+  anon_smt_roots: "follows_chain",
+  anon_booking_tokens: "follows_chain",
+  anon_pseudonym_invalidations: "follows_chain",
+  anon_capacity_pools: "follows_chain",
+  anon_ledger_events: "follows_chain",
+};
