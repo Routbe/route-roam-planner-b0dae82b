@@ -50,15 +50,35 @@ import {
   checkCommitment,
   checkLink,
   copyLink,
+  epochPublicKey,
   hostKeyAdvance,
   hostKeyIdBytes,
   hostKeyInit,
+  hostKeyPublicKey,
   hostKeys,
   hostKeySign,
+  hskContext,
+  hskPlaintext,
+  HSK_ENVELOPE_BYTES,
   MAX_CHAIN_LINKS,
   MAX_EPOCH_ADVANCE,
+  parseHskPlaintext,
   verifyEpochCredential,
+  type EpochLink,
 } from "./forward-secure";
+import {
+  anonPresent,
+  anonVerifyPresentation,
+  capacityKeyMaterial,
+  capacityOpen,
+  capacityTake,
+  capacityVerifyOpen,
+  capacityVerifyTake,
+  guestBookings,
+  hostKeySignSlot,
+  MAX_SLOT_MESSAGES,
+  verifySlotCredential,
+} from "./anon-booking";
 import {
   RECOVERY_FACTORS,
   VERSION_FACTORS,
@@ -141,6 +161,28 @@ function shaped<T>(run: () => T): T {
 
 const epochArg = (v: unknown): number => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : fail("invalid_input"));
 const bytesList = (v: unknown, max: number): Uint8Array[] => (Array.isArray(v) && v.length <= max ? v.map(bytes) : fail("invalid_input"));
+
+/** Highest epoch this worker held per (member, key id): a restore below it is a rollback. */
+const hostKeyMarks = new Map<string, number>();
+const markKey = (owner: string, keyId: string) => `${owner}\u0000${keyId}`;
+function markHostEpoch(owner: string, keyId: string, epoch: number) {
+  const k = markKey(owner, keyId);
+  if ((hostKeyMarks.get(k) ?? -1) < epoch) hostKeyMarks.set(k, epoch);
+}
+
+/** Seals SK_t || epoch to this member's own device key (RVE1 kind hsk, holder member_device). */
+async function sealHostState(owner: string, keyId: string, state: Uint8Array, epoch: number): Promise<Uint8Array> {
+  const plaintext = hskPlaintext(state, epoch);
+  try {
+    return await withRve1Key(owner, (_seed, recipientPublicKey) =>
+      sealEnvelope({ kind: "hsk", holder: "member_device", recipientPublicKey, plaintext, context: hskContext(owner, keyId) }));
+  } finally {
+    wipe(plaintext);
+  }
+}
+
+/** A window edge or slot: unix minutes (or any non-negative safe integer). */
+const u64Arg = (v: unknown): number => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : fail("invalid_input"));
 
 /** The held host key of this member, or invalid_input. */
 function hostSlot(owner: string, keyId: string) {
@@ -991,8 +1033,49 @@ const coreHandlers: CoreHandlers = {
     await withRve1Key(owner, () => null);
     if (hostKeys.has(owner, kid)) fail("invalid_input");
     const { state, publicKey } = await zkOp(() => hostKeyInit(kid));
+    let sealedState: Uint8Array;
+    try {
+      sealedState = await sealHostState(owner, kid, state, 0);
+    } catch (e) {
+      wipe(state);
+      throw e;
+    }
     hostKeys.create(owner, kid, state, publicKey);
-    return { anchor: { keyId: kid, publicKey: publicKey.slice() }, epoch: 0 };
+    markHostEpoch(owner, kid, 0);
+    return { anchor: { keyId: kid, publicKey: publicKey.slice() }, epoch: 0, sealedState };
+  },
+
+  async "host_key.restore"({ userId, keyId, epoch, sealedState, anchor, links }) {
+    const owner = str(userId, 200);
+    const kid = str(keyId, 256);
+    const e = epochArg(epoch);
+    const env = bytes(sealedState);
+    if (env.byteLength !== HSK_ENVELOPE_BYTES) fail("invalid_input");
+    const a = shaped(() => checkAnchor(anchor));
+    if (a.keyId !== kid || !Array.isArray(links) || links.length > MAX_CHAIN_LINKS) fail("invalid_input");
+    const chain = shaped(() => (links as unknown[]).map(checkLink));
+    // Never twice, never below what this worker already held (rollback).
+    if (hostKeys.has(owner, kid) || (hostKeyMarks.get(markKey(owner, kid)) ?? -1) > e) fail("invalid_input");
+    if ((chain.length === 0 ? 0 : chain[chain.length - 1]!.to) !== e) fail("invalid_input");
+    const opened = await withRve1Key(owner, (secretKey) => {
+      try {
+        return parseHskPlaintext(openEnvelope({ envelope: env, expectedKind: "hsk", holder: "member_device", secretKey, context: hskContext(owner, kid) }));
+      } catch {
+        return fail("decrypt_failed");
+      }
+    });
+    try {
+      if (opened.epoch !== e) fail("invalid_input");
+      const pk = await zkOp(() => hostKeyPublicKey(opened.state.slice(), e, kid));
+      const published = await zkOp(() => epochPublicKey({ keyId: kid, publicKey: a.publicKey.slice() }, chain.map(copyLink), e));
+      if (!published || published.length !== pk.length || !published.every((b, i) => b === pk[i])) fail("invalid_input");
+      hostKeys.restore(owner, kid, opened.state, e, a.publicKey, pk, chain as EpochLink[]);
+      markHostEpoch(owner, kid, e);
+      return { epoch: e, publicKey: pk.slice() };
+    } catch (err) {
+      wipe(opened.state);
+      throw err;
+    }
   },
 
   async "host_key.advance_epoch"({ userId, keyId, toEpoch }) {
@@ -1002,8 +1085,28 @@ const coreHandlers: CoreHandlers = {
     const slot = hostSlot(owner, kid);
     if (to <= slot.epoch || to - slot.epoch > MAX_EPOCH_ADVANCE || slot.links.length >= MAX_CHAIN_LINKS) fail("invalid_input");
     const r = await zkOp(() => hostKeyAdvance(slot.state, slot.epoch, to, kid));
+    let sealedState: Uint8Array;
+    try {
+      sealedState = await sealHostState(owner, kid, r.state, to);
+    } catch (e) {
+      wipe(r.state);
+      throw e;
+    }
     hostKeys.advance(owner, kid, r.state, r.link);
-    return { epoch: to, publicKey: r.link.publicKey.slice(), link: copyLink(r.link) };
+    markHostEpoch(owner, kid, to);
+    return { epoch: to, publicKey: r.link.publicKey.slice(), link: copyLink(r.link), sealedState };
+  },
+
+  async "host_key.sign_slot_credential"({ userId, keyId, epoch, slot, messages, commitmentWithProof }) {
+    const owner = str(userId, 200);
+    const kid = str(keyId, 256);
+    const hk = hostSlot(owner, kid);
+    if (epochArg(epoch) !== hk.epoch) fail("invalid_input");
+    const msgs = bytesList(messages, MAX_SLOT_MESSAGES);
+    const cwp = shaped(() => checkCommitment(bytes(commitmentWithProof)));
+    if (cwp.byteLength === 0) fail("invalid_input");
+    const signature = await zkOp(() => hostKeySignSlot(hk.state, hk.epoch, kid, u64Arg(slot), msgs, cwp));
+    return { epoch: hk.epoch, publicKey: hk.publicKey.slice(), signature };
   },
 
   async "host_key.sign_credential"({ userId, keyId, epoch, messages, commitmentWithProof }) {
@@ -1038,6 +1141,93 @@ const coreHandlers: CoreHandlers = {
       proverBlind: proverBlind === undefined ? undefined : bytes(proverBlind),
     };
     return { valid: await zkOp(() => verifyEpochCredential({ keyId: a.keyId, publicKey: a.publicKey.slice() }, chain.map(copyLink), check)) };
+  },
+
+  async "anon_guest.begin"({ hostId, keyId }) {
+    const handle = newHandle();
+    const r = await zkOp(() => guestBookings.begin(handle, str(hostId, 256), str(keyId, 256)));
+    return { handle, commitmentWithProof: r.commitmentWithProof, pseudonym: r.pseudonym };
+  },
+
+  async "anon_guest.accept"({ handle, anchor, links, epoch, slot, messages, signature }) {
+    const g = guestBookings.get(str(handle, 64)) ?? fail("invalid_input");
+    const a = shaped(() => checkAnchor(anchor));
+    if (a.keyId !== g.keyId || g.credential || !Array.isArray(links) || links.length > MAX_CHAIN_LINKS) fail("invalid_input");
+    const chain = shaped(() => (links as unknown[]).map(checkLink));
+    const e = epochArg(epoch);
+    const s = u64Arg(slot);
+    const msgs = bytesList(messages, MAX_SLOT_MESSAGES);
+    const sig = bytes(signature);
+    const pk = await zkOp(() => epochPublicKey({ keyId: a.keyId, publicKey: a.publicKey.slice() }, chain.map(copyLink), e));
+    if (!pk) return { valid: false };
+    const valid = await zkOp(() => verifySlotCredential(pk, a.keyId, e, sig, s, msgs, g.nullifier, g.proverBlind));
+    if (valid) guestBookings.accept(str(handle, 64), { keyId: a.keyId, epoch: e, slot: BigInt(s), messages: msgs, signature: sig, publicKey: pk });
+    return { valid };
+  },
+
+  async "anon_guest.present"({ handle, challenge, windowStart, windowEnd }) {
+    const g = guestBookings.get(str(handle, 64)) ?? fail("invalid_input");
+    const c = g.credential ?? fail("invalid_input");
+    const presentation = await zkOp(() => anonPresent({
+      publicKey: c.publicKey, keyId: c.keyId, epoch: c.epoch, signature: c.signature, slot: c.slot, messages: c.messages,
+      nullifier: g.nullifier, proverBlind: g.proverBlind.slice(), challenge: bytes(challenge), windowStart: u64Arg(windowStart), windowEnd: u64Arg(windowEnd),
+    }));
+    return { presentation, nullifier: g.nullifier.slice(), pseudonym: g.pseudonym.slice(), keyId: c.keyId, epoch: c.epoch, messages: c.messages.map((m) => m.slice()) };
+  },
+
+  async "anon_guest.discard"({ handle }) {
+    return { discarded: guestBookings.discard(str(handle, 64)) };
+  },
+
+  async "anon_host.verify_presentation"({ anchor, links, epoch, minEpoch, presentation, messages, nullifier, challenge, windowStart, windowEnd }) {
+    const a = shaped(() => checkAnchor(anchor));
+    if (!Array.isArray(links) || links.length > MAX_CHAIN_LINKS) fail("invalid_input");
+    const chain = shaped(() => (links as unknown[]).map(checkLink));
+    const e = epochArg(epoch);
+    if (minEpoch !== undefined && e < epochArg(minEpoch)) return { valid: false };
+    const pk = await zkOp(() => epochPublicKey({ keyId: a.keyId, publicKey: a.publicKey.slice() }, chain.map(copyLink), e));
+    if (!pk) return { valid: false };
+    const check = {
+      publicKey: pk, keyId: a.keyId, epoch: e, presentation: bytes(presentation), messages: bytesList(messages, MAX_SLOT_MESSAGES),
+      nullifier: bytes(nullifier), challenge: bytes(challenge), windowStart: u64Arg(windowStart), windowEnd: u64Arg(windowEnd),
+    };
+    return { valid: await zkOp(() => anonVerifyPresentation(check)) };
+  },
+
+  async "capacity.open"({ userId, poolId, capacity }) {
+    const pool = str(poolId, 128);
+    const cap = u64Arg(capacity);
+    return withRve1Key(str(userId, 200), async (seed) => {
+      const km = capacityKeyMaterial(seed);
+      try {
+        return await zkOp(() => capacityOpen(km, pool, cap));
+      } finally {
+        wipe(km);
+      }
+    });
+  },
+
+  async "capacity.take"({ userId, poolId, step, remainingBefore, take }) {
+    const pool = str(poolId, 128);
+    const st = epochArg(step);
+    const before = u64Arg(remainingBefore);
+    const t = u64Arg(take);
+    return withRve1Key(str(userId, 200), async (seed) => {
+      const km = capacityKeyMaterial(seed);
+      try {
+        return await zkOp(() => capacityTake(km, pool, st, before, t));
+      } finally {
+        wipe(km);
+      }
+    });
+  },
+
+  async "capacity.verify_open"({ poolId, commitment, proof }) {
+    return { valid: await zkOp(() => capacityVerifyOpen(bytes(commitment), str(poolId, 128), bytes(proof))) };
+  },
+
+  async "capacity.verify_take"({ poolId, step, before, take, after, proof }) {
+    return { valid: await zkOp(() => capacityVerifyTake(bytes(before), bytes(take), bytes(after), str(poolId, 128), epochArg(step), bytes(proof))) };
   },
 
   async "hash.sha256Hex"({ text }) {
