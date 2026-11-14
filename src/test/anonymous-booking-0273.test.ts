@@ -342,6 +342,10 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
   });
 
   it("history rows are append-only even for the owner, and nothing cascades: deleting a host account without the purge fails", async () => {
+    const gone = await newUser();
+    const c = await initHost(gone);
+    expect((await record(gone, c, 0)).ok).toBe(true);
+    expect((await call(gone, POOL_OPEN, [c.treeId, id("cp"), randomBytes(48), randomBytes(928)])).ok).toBe(true);
     for (const t of ["anon_epoch_links", "anon_smt_roots", "anon_booking_tokens", "anon_pseudonym_invalidations", "anon_ledger_events", "anon_host_keys", "anon_smt_trees", "anon_capacity_pools"]) {
       await expect(db.query(`delete from vault_enclave.${t}`)).rejects.toThrow(/anon_append_only/);
       await expect(db.query(`truncate vault_enclave.${t} cascade`)).rejects.toThrow(/anon_append_only/);
@@ -349,9 +353,6 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     await expect(db.query("update vault_enclave.anon_smt_roots set root = root")).rejects.toThrow(/anon_append_only/);
     await expect(db.query("update vault_enclave.anon_booking_tokens set credential_epoch = 0")).rejects.toThrow(/anon_append_only/);
     await expect(db.query("update vault_enclave.anon_ledger_events set kind = kind")).rejects.toThrow(/anon_append_only/);
-    const gone = await newUser();
-    const c = await initHost(gone);
-    expect((await record(gone, c, 0)).ok).toBe(true);
     // A purge that forgot the anonymous tables must fail, not drop spent nullifiers.
     await expect(db.query("delete from public.users where id = $1", [gone])).rejects.toThrow(/foreign key/);
   });
