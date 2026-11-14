@@ -968,7 +968,7 @@ declare
   v_new text;
 begin
   select pg_catalog.pg_get_functiondef('public.execute_account_merge(text,text,text,text)'::regprocedure) into v_def;
-  if pg_catalog.position('rout_anon_booking_merge' in v_def) > 0 then return; end if;
+  if pg_catalog.strpos(v_def, 'rout_anon_booking_merge') > 0 then return; end if;
   v_new := pg_catalog.regexp_replace(v_def, E'(\\n)([ \\t]*delete from public\\.users where id=v_secondary;)',
     E'\\1 perform public.rout_anon_booking_merge(v_primary, v_secondary);\n\\2');
   if v_new = v_def then
