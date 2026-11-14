@@ -67,6 +67,7 @@ import {
   type EpochLink,
 } from "./forward-secure";
 import {
+  anchorKeyMaterial,
   anonPresent,
   anonVerifyPresentation,
   capacityKeyMaterial,
@@ -77,6 +78,8 @@ import {
   guestBookings,
   hostKeySignSlot,
   MAX_SLOT_MESSAGES,
+  signHostAnchor,
+  verifyHostAnchor,
   verifySlotCredential,
 } from "./anon-booking";
 import {
@@ -1095,6 +1098,26 @@ const coreHandlers: CoreHandlers = {
     hostKeys.advance(owner, kid, r.state, r.link);
     markHostEpoch(owner, kid, to);
     return { epoch: to, publicKey: r.link.publicKey.slice(), link: copyLink(r.link), sealedState };
+  },
+
+  async "host_key.sign_anchor"({ userId, keyId, treeId }) {
+    const owner = str(userId, 200);
+    const kid = str(keyId, 256);
+    const hk = hostSlot(owner, kid);
+    const tree = str(treeId, 128);
+    return withRve1Key(owner, async (seed) => {
+      const km = anchorKeyMaterial(seed);
+      try {
+        return await zkOp(() => signHostAnchor(km, kid, hk.anchor, tree));
+      } finally {
+        wipe(km);
+      }
+    });
+  },
+
+  async "host_key.verify_anchor"({ anchor, treeId, signerPublicKey, signature }) {
+    const a = shaped(() => checkAnchor(anchor));
+    return { valid: await zkOp(() => verifyHostAnchor(bytes(signerPublicKey), bytes(signature), a.keyId, a.publicKey, str(treeId, 128))) };
   },
 
   async "host_key.sign_slot_credential"({ userId, keyId, epoch, slot, messages, commitmentWithProof }) {

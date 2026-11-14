@@ -219,6 +219,58 @@ export async function anonVerifyPresentation(c: PresentationCheck): Promise<bool
   }
 }
 
+// ---- Engine calls: chain anchor -------------------------------------------------
+
+export const ANCHOR_HEADER = "ROUT-HOST-ANCHOR-V1";
+export const ANCHOR_SALT = "rout.v1.anon.anchor";
+const ANCHOR_KEY_INFO = "anchor-signing-key";
+
+/** Anchor signing key material from the member's RVE1 device seed (HKDF-SHA256). */
+export function anchorKeyMaterial(deviceSeed: Uint8Array): Uint8Array {
+  need(deviceSeed, 32);
+  const prk = extract(sha256, deviceSeed, enc.encode(ANCHOR_SALT));
+  try {
+    return expand(sha256, prk, enc.encode(ANCHOR_KEY_INFO), 32);
+  } finally {
+    wipe(prk);
+  }
+}
+
+/**
+ * BBS signature (header ROUT-HOST-ANCHOR-V1) over [key id, PK_0, tree id] by a
+ * key derived from the device seed: binds the chain's anchor to its nullifier
+ * tree and to the device that signs its roots. The secret key exists only in
+ * the engine memory of this one call.
+ */
+export async function signHostAnchor(km: Uint8Array, keyId: string, anchorPublicKey: Uint8Array, treeId: string): Promise<{ signerPublicKey: Uint8Array; signature: Uint8Array }> {
+  need(km, 32);
+  need(anchorPublicKey, HOST_PUBLIC_KEY_BYTES);
+  const msgs = packHashedMessages([hostKeyIdBytes(keyId), anchorPublicKey, poolIdBytes(treeId)], 3);
+  const info = enc.encode(ANCHOR_KEY_INFO);
+  const header = enc.encode(ANCHOR_HEADER);
+  try {
+    return await withZkFrame((f) => {
+      const sk = f.reserve(32);
+      const pk = f.reserve(HOST_PUBLIC_KEY_BYTES);
+      zkCheck(f.ex.rout_zk_keygen(f.put(km), km.byteLength, f.put(info), info.byteLength, sk, pk));
+      const sig = f.reserve(HOST_SIGNATURE_BYTES);
+      zkCheck(f.ex.rout_zk_sign(sk, pk, f.put(header), header.byteLength, f.put(msgs), msgs.byteLength, sig));
+      return { signerPublicKey: f.take(pk, HOST_PUBLIC_KEY_BYTES), signature: f.take(sig, HOST_SIGNATURE_BYTES) };
+    });
+  } finally {
+    wipe(msgs);
+  }
+}
+
+export async function verifyHostAnchor(signerPublicKey: Uint8Array, signature: Uint8Array, keyId: string, anchorPublicKey: Uint8Array, treeId: string): Promise<boolean> {
+  need(signerPublicKey, HOST_PUBLIC_KEY_BYTES);
+  need(signature, HOST_SIGNATURE_BYTES);
+  need(anchorPublicKey, HOST_PUBLIC_KEY_BYTES);
+  const msgs = packHashedMessages([hostKeyIdBytes(keyId), anchorPublicKey, poolIdBytes(treeId)], 3);
+  const header = enc.encode(ANCHOR_HEADER);
+  return withZkFrame((f) => verdict(f.ex.rout_zk_verify(f.put(signerPublicKey), f.put(signature), f.put(header), header.byteLength, f.put(msgs), msgs.byteLength)));
+}
+
 // ---- Engine calls: capacity ---------------------------------------------------
 
 /** Opens a pool of `capacity` seats: C_0 (48) and its range proof (928). `km` is wiped by the engine copy only; the caller wipes its own. */

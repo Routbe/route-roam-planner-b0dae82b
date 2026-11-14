@@ -188,6 +188,9 @@ export interface EnclaveOps {
     req: { userId: string; keyId: string; epoch: number; sealedState: Uint8Array; anchor: HostKeyAnchor; links: EpochLink[] };
     res: { epoch: number; publicKey: Uint8Array };
   };
+  /** Binds PK_0 to the chain's nullifier tree: BBS by a device-seed key over [key id, PK_0, tree id] (db anchor_signer_pk / anchor_sig). */
+  "host_key.sign_anchor": { req: { userId: string; keyId: string; treeId: string }; res: { signerPublicKey: Uint8Array; signature: Uint8Array } };
+  "host_key.verify_anchor": { req: { anchor: HostKeyAnchor; treeId: string; signerPublicKey: Uint8Array; signature: Uint8Array }; res: { valid: boolean } };
   /** Slot credential (7f) over [key id, epoch, RAW slot, messages..] for a guest commitment; current epoch only. */
   "host_key.sign_slot_credential": {
     req: { userId: string; keyId: string; epoch: number; slot: number; messages: Uint8Array[]; commitmentWithProof: Uint8Array };

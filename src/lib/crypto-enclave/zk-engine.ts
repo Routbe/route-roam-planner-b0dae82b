@@ -46,6 +46,9 @@ export type ZkExports = {
     pk: number, kid: number, kidLen: number, epoch: bigint, sig: number, msgs: number, msgsLen: number, bmsgs: number, bmsgsLen: number, proverBlind: number,
   ): number;
   rout_zk_commit(msgs: number, msgsLen: number, out: number, outCap: number, outBlind: number): number;
+  rout_zk_keygen(km: number, kmLen: number, info: number, infoLen: number, outSk: number, outPk: number): number;
+  rout_zk_sign(sk: number, pk: number, h: number, hLen: number, msgs: number, msgsLen: number, out: number): number;
+  rout_zk_verify(pk: number, sig: number, h: number, hLen: number, msgs: number, msgsLen: number): number;
   rout_zk_hostkey_sign_slot(
     state: number, epoch: bigint, kid: number, kidLen: number, cwp: number, cwpLen: number, slot: bigint, msgs: number, msgsLen: number, outSig: number,
   ): number;
