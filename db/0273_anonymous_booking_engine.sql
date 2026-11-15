@@ -1,6 +1,7 @@
--- 0273 — EXPAND: anonymous booking engine (Stap 7e), the SQL side of the
--- wasm/rout-zk engine from steps 7a-7d. HELD IN db-pending/: not applied on
--- Neon, not in db/, CODE_SCHEMA_LEVEL stays 0272 until the owner's GO.
+-- 0273 — EXPAND: anonymous booking engine (Stap 7e/7f), the SQL side of the
+-- wasm/rout-zk engine from steps 7a-7d. Moved from db-pending/ into db/ with
+-- CODE_SCHEMA_LEVEL 0273 after the owner's GO (2026-11-15); the rollback stays
+-- in db-pending/0273_anonymous_booking_engine_rollback.sql.
 --
 -- What is stored (all of it public material or ciphertext; no guest identity):
 --   anon_host_keys               one forward-secure chain per host: anchor PK_0
