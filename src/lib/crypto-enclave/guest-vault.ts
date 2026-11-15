@@ -165,7 +165,7 @@ async function sealRecord(key: CryptoKey, scope: string, name: string, data: Uin
   const padded = padRecord(data);
   try {
     const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_BYTES));
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(scope, name) }, key, padded));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad(scope, name) }, key, padded as BufferSource));
     return { v: 1, iv, ct };
   } finally {
     wipe(padded);
@@ -177,7 +177,7 @@ async function openRecord(key: CryptoKey, scope: string, name: string, r: unknow
   if (!isRecord(r)) return null;
   let padded: Uint8Array;
   try {
-    padded = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: r.iv, additionalData: aad(scope, name) }, key, r.ct));
+    padded = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: r.iv as BufferSource, additionalData: aad(scope, name) }, key, r.ct as BufferSource));
   } catch {
     return null;
   }
@@ -365,7 +365,7 @@ export class GuestVault {
     const s = deriveGuestSecrets(input);
     let key: CryptoKey;
     try {
-      key = await crypto.subtle.importKey("raw", s.storageKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+      key = await crypto.subtle.importKey("raw", s.storageKey as BufferSource, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     } finally {
       wipe(s.storageKey);
     }
