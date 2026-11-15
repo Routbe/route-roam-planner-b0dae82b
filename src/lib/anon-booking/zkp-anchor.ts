@@ -6,7 +6,7 @@
  * the attestation itself is a certificate chain and cannot sign, so the
  * passkey's own assertion is the signature (owner decision 2026-11-15).
  *
- * Statement (byte-identical to db-pending/0274 anon_anchor_statement):
+ * Statement (byte-identical to db/0274 anon_anchor_statement):
  *   "ROUT-ZKP-ANCHOR-V1" || lp(device id) || lp(key id) || lp(tree id)
  *     || PK_0 (96) || enclave anchor signer PK (96) || nullifier root signer PK (96)
  *   lp(x) = I2OSP(len(x), 4) || x

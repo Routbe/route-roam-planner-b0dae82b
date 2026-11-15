@@ -26708,6 +26708,173 @@
     },
     {
       "schema": "vault_enclave",
+      "name": "anon_anchor_endorsements",
+      "columns": [
+        {
+          "name": "key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "credential_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "public_key",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "algorithm",
+          "type": "integer",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "authenticator_data",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "client_data_json",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "signature",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "fmt",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "attested",
+          "type": "boolean",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "status_safe",
+          "type": "boolean",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "certified_l3",
+          "type": "boolean",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_anchor_endorsements_alg",
+          "kind": "c",
+          "def": "CHECK ((algorithm = ANY (ARRAY['-7'::integer, '-8'::integer, '-257'::integer])))"
+        },
+        {
+          "name": "anon_anchor_endorsements_credential",
+          "kind": "c",
+          "def": "CHECK (((credential_id ~ '^[A-Za-z0-9_-]+$'::text) AND ((length(credential_id) >= 16) AND (length(credential_id) <= 1366))))"
+        },
+        {
+          "name": "anon_anchor_endorsements_device_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (device_id) REFERENCES vault_enclave.anon_host_devices(device_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_anchor_endorsements_key_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (key_id) REFERENCES vault_enclave.anon_host_keys(key_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_anchor_endorsements_len",
+          "kind": "c",
+          "def": "CHECK ((((octet_length(public_key) >= 32) AND (octet_length(public_key) <= 1024)) AND ((octet_length(authenticator_data) >= 37) AND (octet_length(authenticator_data) <= 1024)) AND ((octet_length(client_data_json) >= 32) AND (octet_length(client_data_json) <= 4096)) AND ((octet_length(signature) >= 64) AND (octet_length(signature) <= 512))))"
+        },
+        {
+          "name": "anon_anchor_endorsements_mds3",
+          "kind": "c",
+          "def": "CHECK ((attested AND status_safe AND (fmt = ANY (ARRAY['packed'::text, 'tpm'::text, 'apple'::text, 'android-key'::text]))))"
+        },
+        {
+          "name": "anon_anchor_endorsements_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (key_id)"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_anchor_endorsements_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_anchor_endorsements FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_anchor_endorsements_no_update BEFORE UPDATE ON vault_enclave.anon_anchor_endorsements FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
       "name": "anon_booking_tokens",
       "columns": [
         {
@@ -27043,6 +27210,96 @@
     },
     {
       "schema": "vault_enclave",
+      "name": "anon_host_devices",
+      "columns": [
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "host_user_id",
+          "type": "uuid",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "purged_at",
+          "type": "timestamp with time zone",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_host_devices_host_user_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_host_devices_id",
+          "kind": "c",
+          "def": "CHECK (vault_enclave.anon_id_ok(device_id, 'hd'::text))"
+        },
+        {
+          "name": "anon_host_devices_owner",
+          "kind": "c",
+          "def": "CHECK ((((host_user_id IS NULL) = (purged_at IS NOT NULL)) AND ((purged_at IS NULL) OR (revoked_at IS NOT NULL))))"
+        },
+        {
+          "name": "anon_host_devices_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (device_id)"
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX anon_host_devices_live ON vault_enclave.anon_host_devices USING btree (host_user_id) WHERE (revoked_at IS NULL)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER anon_host_devices_no_delete BEFORE DELETE ON vault_enclave.anon_host_devices FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_host_devices_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_host_devices FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
       "name": "anon_host_key_states",
       "columns": [
         {
@@ -27204,9 +27461,22 @@
           "default": null,
           "identity": null,
           "generated": null
+        },
+        {
+          "name": "device_id",
+          "type": "text",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
         }
       ],
       "constraints": [
+        {
+          "name": "anon_host_keys_device_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (device_id) REFERENCES vault_enclave.anon_host_devices(device_id) ON DELETE RESTRICT"
+        },
         {
           "name": "anon_host_keys_epoch",
           "kind": "c",
@@ -27239,7 +27509,8 @@
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX anon_host_keys_one_active ON vault_enclave.anon_host_keys USING btree (host_user_id) WHERE (retired_at IS NULL)"
+        "CREATE UNIQUE INDEX anon_host_keys_one_active ON vault_enclave.anon_host_keys USING btree (host_user_id) WHERE ((retired_at IS NULL) AND (device_id IS NULL))",
+        "CREATE UNIQUE INDEX anon_host_keys_one_active_device ON vault_enclave.anon_host_keys USING btree (device_id) WHERE ((retired_at IS NULL) AND (device_id IS NOT NULL))"
       ],
       "triggers": [
         "CREATE TRIGGER anon_host_keys_no_delete BEFORE DELETE ON vault_enclave.anon_host_keys FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
@@ -27802,7 +28073,7 @@
         {
           "name": "audit_logs_action_check",
           "kind": "c",
-          "def": "CHECK ((action = ANY (ARRAY['step_up_register'::text, 'token_store'::text, 'token_retrieve'::text, 'server_key_register'::text, 'sdm_card_register'::text, 'sdm_recovery_retrieve'::text, 'sdm_recovery_confirm'::text, 'sdm_fleet_register'::text, 'sdm_batch_register'::text, 'sdm_batch_cards_register'::text, 'sdm_tap_begin'::text, 'sdm_tap_confirm'::text, 'sdm_tap_consume'::text, 'sdm_card_activate'::text, 'sdm_batch_list'::text, 'sdm_batch_export'::text, 'sdm_station_register'::text, 'sdm_station_list'::text, 'sdm_station_retire'::text, 'card_step_up_begin'::text, 'card_step_up_complete'::text, 'card_step_up_claim'::text, 'sdm_card_revoke'::text, 'pake_setup_register'::text, 'pake_register'::text, 'pake_signup_register'::text, 'pake_unregister'::text, 'pake_login'::text, 'passkey_attestation_record'::text, 'recovery_v4_begin'::text, 'recovery_v4_confirm'::text, 'recovery_v4_commit'::text, 'recovery_v4_abort'::text, 'recovery_v4_remove'::text, 'recovery_v4_expire'::text, 'recovery_v4_replay'::text, 'recovery_v4_compromise'::text, 'recovery_v4_server_share'::text, 'anon_host_key_init'::text, 'anon_host_key_advance'::text, 'anon_host_key_retire'::text, 'anon_host_state_read'::text, 'anon_booking_record'::text, 'anon_booking_check'::text, 'anon_pseudonym_invalidate'::text, 'anon_capacity_open'::text, 'anon_ledger_read'::text, 'anon_host_purge'::text, 'anon_host_merge'::text])))"
+          "def": "CHECK ((action = ANY (ARRAY['step_up_register'::text, 'token_store'::text, 'token_retrieve'::text, 'server_key_register'::text, 'sdm_card_register'::text, 'sdm_recovery_retrieve'::text, 'sdm_recovery_confirm'::text, 'sdm_fleet_register'::text, 'sdm_batch_register'::text, 'sdm_batch_cards_register'::text, 'sdm_tap_begin'::text, 'sdm_tap_confirm'::text, 'sdm_tap_consume'::text, 'sdm_card_activate'::text, 'sdm_batch_list'::text, 'sdm_batch_export'::text, 'sdm_station_register'::text, 'sdm_station_list'::text, 'sdm_station_retire'::text, 'card_step_up_begin'::text, 'card_step_up_complete'::text, 'card_step_up_claim'::text, 'sdm_card_revoke'::text, 'pake_setup_register'::text, 'pake_register'::text, 'pake_signup_register'::text, 'pake_unregister'::text, 'pake_login'::text, 'passkey_attestation_record'::text, 'recovery_v4_begin'::text, 'recovery_v4_confirm'::text, 'recovery_v4_commit'::text, 'recovery_v4_abort'::text, 'recovery_v4_remove'::text, 'recovery_v4_expire'::text, 'recovery_v4_replay'::text, 'recovery_v4_compromise'::text, 'recovery_v4_server_share'::text, 'anon_host_key_init'::text, 'anon_host_key_advance'::text, 'anon_host_key_retire'::text, 'anon_host_state_read'::text, 'anon_booking_record'::text, 'anon_booking_check'::text, 'anon_pseudonym_invalidate'::text, 'anon_capacity_open'::text, 'anon_ledger_read'::text, 'anon_host_purge'::text, 'anon_host_merge'::text, 'anon_device_register'::text, 'anon_device_revoke'::text, 'anon_device_list'::text])))"
         },
         {
           "name": "audit_logs_entry_hash_key",
@@ -32443,6 +32714,12 @@
     },
     {
       "schema": "vault_enclave",
+      "name": "anon_anchor_statement",
+      "args": "p_device text, p_key text, p_tree text, p_anchor_pk bytea, p_signer_pk bytea, p_root_pk bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_anchor_statement(p_device text, p_key text, p_tree text, p_anchor_pk bytea, p_signer_pk bytea, p_root_pk bytea)\n RETURNS bytea\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select pg_catalog.convert_to('ROUT-ZKP-ANCHOR-V1', 'UTF8')\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_device, 'UTF8'))\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_key, 'UTF8'))\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_tree, 'UTF8'))\n    || p_anchor_pk || p_signer_pk || p_root_pk\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
       "name": "anon_answer",
       "args": "p_op text, p_ok boolean, p_why text, p_epoch bigint, p_ver bigint",
       "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_answer(p_op text, p_ok boolean, p_why text, p_epoch bigint, p_ver bigint)\n RETURNS jsonb\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select pg_catalog.jsonb_build_object('op', p_op, 'ok', p_ok, 'why', p_why, 'epoch', p_epoch, 'ver', p_ver)\n$function$"
@@ -32452,6 +32729,12 @@
       "name": "anon_append_only",
       "args": "",
       "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_append_only()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  raise exception 'anon_append_only' using errcode = '42501';\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_b64u",
+      "args": "p bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_b64u(p bytea)\n RETURNS text\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select pg_catalog.rtrim(pg_catalog.translate(pg_catalog.encode(p, 'base64'), E'+/\\n', '-_'), '=')\n$function$"
     },
     {
       "schema": "vault_enclave",
@@ -32479,9 +32762,33 @@
     },
     {
       "schema": "vault_enclave",
+      "name": "anon_host_anchor_public",
+      "args": "p_handle text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_anchor_public(p_handle text)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  with h as (\n    select p.id from public.profiles p\n     where p_handle is not null and p_handle ~ '^[a-z0-9._-]{2,40}$' and pg_catalog.lower(p.username) = p_handle\n       and coalesce(p.is_banned, false) = false and coalesce(p.is_suspended, false) = false\n       and coalesce(pg_catalog.to_jsonb(p)->>'status', 'active') not in ('frozen', 'banned', 'suspended')\n       and coalesce(pg_catalog.to_jsonb(p)->'display_prefs'->'publicProfile', 'true'::jsonb)\n           not in ('false'::jsonb, 'null'::jsonb, '0'::jsonb, '\"\"'::jsonb)\n     limit 1)\n  select case when not exists (select 1 from h) then pg_catalog.jsonb_build_object('found', false)\n  else pg_catalog.jsonb_build_object('found', true, 'devices', coalesce((\n    select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n        'deviceId', d.device_id, 'keyId', k.key_id, 'treeId', t.tree_id,\n        'anchorPublicKey', pg_catalog.encode(k.anchor_pk, 'hex'),\n        'anchorSignerPublicKey', pg_catalog.encode(k.anchor_signer_pk, 'hex'),\n        'anchorSignature', pg_catalog.encode(k.anchor_sig, 'hex'),\n        'rootSignerPublicKey', pg_catalog.encode(t.root_signer_pk, 'hex'),\n        'epoch', k.epoch, 'currentPublicKey', pg_catalog.encode(k.current_pk, 'hex'),\n        'retired', k.retired_at is not null or d.revoked_at is not null,\n        'registeredAt', e.created_at,\n        'links', coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n            'from', l.from_epoch, 'to', l.to_epoch,\n            'publicKey', pg_catalog.encode(l.next_pk, 'hex'), 'signature', pg_catalog.encode(l.link_sig, 'hex'))\n            order by l.from_epoch) from vault_enclave.anon_epoch_links l where l.key_id = k.key_id), '[]'::jsonb),\n        'passkey', pg_catalog.jsonb_build_object(\n            'credentialId', e.credential_id, 'algorithm', e.algorithm,\n            'publicKey', pg_catalog.encode(e.public_key, 'hex'),\n            'authenticatorData', pg_catalog.encode(e.authenticator_data, 'hex'),\n            'clientDataJSON', pg_catalog.encode(e.client_data_json, 'hex'),\n            'signature', pg_catalog.encode(e.signature, 'hex'),\n            'fmt', e.fmt, 'attested', e.attested, 'statusSafe', e.status_safe, 'certifiedL3', e.certified_l3))\n        order by d.created_at, d.device_id, k.created_at)\n      from h join vault_enclave.anon_host_devices d on d.host_user_id = h.id\n      join vault_enclave.anon_host_keys k on k.device_id = d.device_id\n      join vault_enclave.anon_smt_trees t on t.key_id = k.key_id\n      join vault_enclave.anon_anchor_endorsements e on e.key_id = k.key_id), '[]'::jsonb)) end\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
       "name": "anon_host_chain",
       "args": "p_key_id text",
       "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_chain(p_key_id text)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select case when k.key_id is null then pg_catalog.jsonb_build_object('found', false)\n  else pg_catalog.jsonb_build_object(\n    'found', true, 'keyId', k.key_id, 'epoch', k.epoch, 'retired', k.retired_at is not null,\n    'anchorPublicKey', pg_catalog.encode(k.anchor_pk, 'hex'),\n    'anchorSignerPublicKey', pg_catalog.encode(k.anchor_signer_pk, 'hex'),\n    'anchorSignature', pg_catalog.encode(k.anchor_sig, 'hex'),\n    'currentPublicKey', pg_catalog.encode(k.current_pk, 'hex'),\n    'links', coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n        'from', l.from_epoch, 'to', l.to_epoch,\n        'publicKey', pg_catalog.encode(l.next_pk, 'hex'), 'signature', pg_catalog.encode(l.link_sig, 'hex'))\n        order by l.from_epoch)\n      from vault_enclave.anon_epoch_links l where l.key_id = k.key_id), '[]'::jsonb)) end\n  from (select 1) d left join vault_enclave.anon_host_keys k on k.key_id = p_key_id\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_device_register",
+      "args": "p_proof uuid, p_device_id text, p_key_id text, p_anchor_pk bytea, p_anchor_signer_pk bytea, p_anchor_sig bytea, p_state bytea, p_tree_id text, p_root_signer_pk bytea, p_genesis_sig bytea, p_credential_id text, p_algorithm integer, p_authenticator_data bytea, p_client_data_json bytea, p_passkey_sig bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_device_register(p_proof uuid, p_device_id text, p_key_id text, p_anchor_pk bytea, p_anchor_signer_pk bytea, p_anchor_sig bytea, p_state bytea, p_tree_id text, p_root_signer_pk bytea, p_genesis_sig bytea, p_credential_id text, p_algorithm integer, p_authenticator_data bytea, p_client_data_json bytea, p_passkey_sig bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_auth uuid;\n  v_why text := 'ok';\n  v_cd jsonb;\n  v_pk bytea;\n  v_new_device boolean;\n  d vault_enclave.anon_host_devices%rowtype;\n  a vault_enclave.passkey_attestations%rowtype;\n  v_genesis bytea;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_device_register', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('device_register', false, 'no_caller', null, null);\n  end if;\n  -- Same lock as 0273 anon_host_key_init: a 0273 init and a device registration serialize.\n  perform pg_catalog.pg_advisory_xact_lock(273, pg_catalog.hashtext(v_caller::text));\n  if not vault_enclave.anon_id_ok(p_device_id, 'hd') or not vault_enclave.anon_id_ok(p_key_id, 'hk')\n     or not vault_enclave.anon_id_ok(p_tree_id, 'st')\n     or not vault_enclave.anon_len(p_anchor_pk, 96) or not vault_enclave.anon_len(p_anchor_signer_pk, 96)\n     or not vault_enclave.anon_len(p_anchor_sig, 80) or not vault_enclave.anon_len(p_root_signer_pk, 96)\n     or not vault_enclave.anon_len(p_genesis_sig, 80) or not vault_enclave.anon_is_hsk(p_state)\n     or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]+$' or length(p_credential_id) not between 16 and 1366\n     or p_algorithm is null or p_algorithm not in (-7, -8, -257)\n     or p_authenticator_data is null or octet_length(p_authenticator_data) not between 37 and 1024\n     or p_client_data_json is null or octet_length(p_client_data_json) not between 32 and 4096\n     or p_passkey_sig is null or octet_length(p_passkey_sig) not between 64 and 512 then\n    v_why := 'malformed';\n  end if;\n  if v_why = 'ok' then\n    begin\n      v_cd := pg_catalog.convert_from(p_client_data_json, 'UTF8')::jsonb;\n      if pg_catalog.jsonb_typeof(v_cd) <> 'object' then v_why := 'malformed'; end if;\n    exception when others then\n      v_why := 'malformed';\n    end;\n  end if;\n  if v_why = 'ok' then\n    select * into d from vault_enclave.anon_host_devices x where x.device_id = p_device_id for update;\n    v_new_device := d.device_id is null;\n    if exists (select 1 from vault_enclave.anon_host_keys k\n                where k.host_user_id = v_caller and k.retired_at is null and k.device_id is null) then\n      v_why := 'legacy_chain';\n    elsif not v_new_device and (d.host_user_id is distinct from v_caller or d.revoked_at is not null) then\n      v_why := 'taken';\n    elsif not v_new_device and exists (select 1 from vault_enclave.anon_host_keys k\n                                        where k.device_id = p_device_id and k.retired_at is null) then\n      v_why := 'busy';\n    elsif v_new_device and (select pg_catalog.count(*) from vault_enclave.anon_host_devices x\n                             where x.host_user_id = v_caller and x.revoked_at is null) >= 16 then\n      v_why := 'device_limit';\n    elsif exists (select 1 from vault_enclave.anon_host_keys k where k.key_id = p_key_id)\n       or exists (select 1 from vault_enclave.anon_smt_trees t where t.tree_id = p_tree_id) then\n      v_why := 'taken';\n    end if;\n  end if;\n  if v_why = 'ok' then\n    v_auth := vault_enclave.passkey_attestation_identity(v_caller);\n    begin\n      select pg_catalog.decode(p.\"publicKey\", 'base64') into v_pk from neon_auth.passkey p\n       where p.\"credentialID\" = p_credential_id and p.\"userId\" = v_auth::text;\n    exception when others then\n      v_pk := null;\n    end;\n    select * into a from vault_enclave.passkey_attestations x where x.credential_id = p_credential_id and x.auth_user_id = v_auth;\n    if v_pk is null or octet_length(v_pk) not between 32 and 1024 then\n      v_why := 'passkey';\n    elsif a.credential_id is null or not a.attested or a.status_safe is not true\n       or a.fmt not in ('packed', 'tpm', 'apple', 'android-key') then\n      v_why := 'attestation';\n    elsif v_cd->>'type' is distinct from 'webauthn.get'\n       or v_cd->>'challenge' is distinct from vault_enclave.anon_b64u(pg_catalog.sha256(vault_enclave.anon_anchor_statement(\n            p_device_id, p_key_id, p_tree_id, p_anchor_pk, p_anchor_signer_pk, p_root_signer_pk))) then\n      v_why := 'challenge';\n    elsif (pg_catalog.get_byte(p_authenticator_data, 32) & 5) <> 5 then\n      v_why := 'flags';\n    elsif not vault_enclave.anon_stepup(v_caller, p_proof) then\n      v_why := 'stepup';\n    end if;\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_device_register', 'denied', v_why, null);\n    return vault_enclave.anon_answer('device_register', false, v_why, null, null);\n  end if;\n  if v_new_device then\n    insert into vault_enclave.anon_host_devices (device_id, host_user_id) values (p_device_id, v_caller);\n  end if;\n  insert into vault_enclave.anon_host_keys (key_id, host_user_id, anchor_pk, anchor_signer_pk, anchor_sig, current_pk, device_id)\n  values (p_key_id, v_caller, p_anchor_pk, p_anchor_signer_pk, p_anchor_sig, p_anchor_pk, p_device_id);\n  insert into vault_enclave.anon_host_key_states (key_id, state_envelope) values (p_key_id, p_state);\n  insert into vault_enclave.anon_smt_trees (tree_id, key_id, root_signer_pk, ledger_head)\n  values (p_tree_id, p_key_id, p_root_signer_pk, '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);\n  insert into vault_enclave.anon_smt_roots (tree_id, epoch, root, root_sig)\n  values (p_tree_id, 0, '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, p_genesis_sig);\n  v_genesis := vault_enclave.anon_ledger_hash(p_tree_id, 0, 'genesis', 0,\n    '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, null, null, null, null, null, null, null,\n    '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);\n  insert into vault_enclave.anon_ledger_events (tree_id, seq, kind, root_epoch, smt_root, prev_hash, event_hash)\n  values (p_tree_id, 0, 'genesis', 0, '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea,\n          '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea, v_genesis);\n  update vault_enclave.anon_smt_trees set ledger_head = v_genesis where tree_id = p_tree_id;\n  insert into vault_enclave.anon_anchor_endorsements (key_id, device_id, credential_id, public_key, algorithm,\n      authenticator_data, client_data_json, signature, fmt, attested, status_safe, certified_l3)\n  values (p_key_id, p_device_id, p_credential_id, v_pk, p_algorithm, p_authenticator_data, p_client_data_json,\n          p_passkey_sig, a.fmt, a.attested, a.status_safe, a.certified_l3);\n  perform vault_enclave.append_audit(v_caller, 'anon_device_register', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('device_register', true, 'ok', 0, 0);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_device_revoke",
+      "args": "p_proof uuid, p_device_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_device_revoke(p_proof uuid, p_device_id text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  d vault_enclave.anon_host_devices%rowtype;\n  k record;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_device_revoke', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('device_revoke', false, 'no_caller', null, null);\n  end if;\n  select * into d from vault_enclave.anon_host_devices x where x.device_id = p_device_id and x.host_user_id = v_caller for update;\n  if not found then\n    v_why := 'unknown';\n  elsif d.revoked_at is not null then\n    v_why := 'revoked';\n  elsif not vault_enclave.anon_stepup(v_caller, p_proof) then\n    v_why := 'stepup';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_device_revoke', 'denied', v_why, null);\n    return vault_enclave.anon_answer('device_revoke', false, v_why, null, null);\n  end if;\n  for k in select h.key_id from vault_enclave.anon_host_keys h\n            where h.device_id = d.device_id and h.retired_at is null order by h.key_id loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n  end loop;\n  update vault_enclave.anon_host_devices set revoked_at = pg_catalog.clock_timestamp() where device_id = d.device_id;\n  perform vault_enclave.append_audit(v_caller, 'anon_device_revoke', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('device_revoke', true, 'ok', null, null);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_devices_mine",
+      "args": "",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_devices_mine()\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_list jsonb;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_device_list', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('devices', false, 'no_caller', null, null);\n  end if;\n  select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n      'deviceId', d.device_id, 'createdAt', d.created_at, 'revokedAt', d.revoked_at,\n      'keyId', k.key_id, 'treeId', t.tree_id, 'epoch', k.epoch, 'ver', k.ver) order by d.created_at, d.device_id), '[]'::jsonb)\n    into v_list\n    from vault_enclave.anon_host_devices d\n    left join vault_enclave.anon_host_keys k on k.device_id = d.device_id and k.retired_at is null\n    left join vault_enclave.anon_smt_trees t on t.key_id = k.key_id\n   where d.host_user_id = v_caller;\n  perform vault_enclave.append_audit(v_caller, 'anon_device_list', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('devices', true, 'ok', null, null) || pg_catalog.jsonb_build_object('devices', v_list);\nend $function$"
     },
     {
       "schema": "vault_enclave",
@@ -32506,6 +32813,12 @@
       "name": "anon_host_key_state",
       "args": "p_key_id text",
       "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_key_state(p_key_id text)\n RETURNS TABLE(granted boolean, epoch bigint, ver bigint, state_envelope bytea)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  r record;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_host_state_read', 'denied', 'no_caller', null);\n    return query select false, null::bigint, null::bigint, null::bytea; return;\n  end if;\n  select k.epoch as e, k.ver as v, s.state_envelope as env into r\n    from vault_enclave.anon_host_keys k join vault_enclave.anon_host_key_states s on s.key_id = k.key_id\n   where k.key_id = p_key_id and k.host_user_id = v_caller and k.retired_at is null;\n  if not found then\n    perform vault_enclave.append_audit(v_caller, 'anon_host_state_read', 'denied', 'unknown', null);\n    return query select false, null::bigint, null::bigint, null::bytea; return;\n  end if;\n  perform vault_enclave.append_audit(v_caller, 'anon_host_state_read', 'granted', 'ok', null);\n  return query select true, r.e, r.v, r.env;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_passkey",
+      "args": "p_credential_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_passkey(p_credential_id text)\n RETURNS jsonb\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_auth uuid;\n  v_pk bytea;\n  a vault_enclave.passkey_attestations%rowtype;\nbegin\n  if v_caller is null or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]+$' or length(p_credential_id) not between 16 and 1366 then\n    return pg_catalog.jsonb_build_object('found', false);\n  end if;\n  v_auth := vault_enclave.passkey_attestation_identity(v_caller);\n  begin\n    select pg_catalog.decode(p.\"publicKey\", 'base64') into v_pk from neon_auth.passkey p\n     where p.\"credentialID\" = p_credential_id and p.\"userId\" = v_auth::text;\n  exception when others then\n    v_pk := null;\n  end;\n  if v_pk is null then return pg_catalog.jsonb_build_object('found', false); end if;\n  select * into a from vault_enclave.passkey_attestations x where x.credential_id = p_credential_id and x.auth_user_id = v_auth;\n  return pg_catalog.jsonb_build_object('found', true, 'publicKey', pg_catalog.encode(v_pk, 'hex'),\n    'fmt', coalesce(a.fmt, 'none'), 'attested', coalesce(a.attested, false),\n    'statusSafe', coalesce(a.status_safe, false), 'certifiedL3', coalesce(a.certified_l3, false));\nend $function$"
     },
     {
       "schema": "vault_enclave",
@@ -32559,7 +32872,7 @@
       "schema": "vault_enclave",
       "name": "anon_merge_host",
       "args": "p_primary uuid, p_secondary uuid",
-      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_merge_host(p_primary uuid, p_secondary uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_secondary order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    update vault_enclave.anon_host_keys set host_user_id = p_primary, updated_at = pg_catalog.clock_timestamp()\n     where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  if n > 0 then\n    perform vault_enclave.append_audit(p_primary, 'anon_host_merge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_merge_host(p_primary uuid, p_secondary uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_secondary order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    update vault_enclave.anon_host_keys set host_user_id = p_primary, updated_at = pg_catalog.clock_timestamp()\n     where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  update vault_enclave.anon_host_devices set revoked_at = coalesce(revoked_at, pg_catalog.clock_timestamp()),\n         host_user_id = p_primary where host_user_id = p_secondary;\n  if n > 0 then\n    perform vault_enclave.append_audit(p_primary, 'anon_host_merge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
     },
     {
       "schema": "vault_enclave",
@@ -32571,7 +32884,7 @@
       "schema": "vault_enclave",
       "name": "anon_purge_host",
       "args": "p_user uuid",
-      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_purge_host(p_user uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_user order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    delete from vault_enclave.anon_host_key_states s where s.key_id = k.key_id;\n    update vault_enclave.anon_host_keys set host_user_id = null, purged_at = pg_catalog.clock_timestamp(),\n           updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  if n > 0 then\n    perform vault_enclave.append_audit(null, 'anon_host_purge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_purge_host(p_user uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_user order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    delete from vault_enclave.anon_host_key_states s where s.key_id = k.key_id;\n    delete from vault_enclave.anon_anchor_endorsements e where e.key_id = k.key_id;\n    update vault_enclave.anon_host_keys set host_user_id = null, purged_at = pg_catalog.clock_timestamp(),\n           updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  update vault_enclave.anon_host_devices set revoked_at = coalesce(revoked_at, pg_catalog.clock_timestamp()),\n         host_user_id = null, purged_at = pg_catalog.clock_timestamp() where host_user_id = p_user;\n  if n > 0 then\n    perform vault_enclave.append_audit(null, 'anon_host_purge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
     },
     {
       "schema": "vault_enclave",
