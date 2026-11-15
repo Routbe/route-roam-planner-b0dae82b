@@ -239,6 +239,19 @@ export const enclave = {
       callEnclave("anon_guest.present", { handle, challenge: challenge.slice(), windowStart, windowEnd }),
     discard: (handle: string) => callEnclave("anon_guest.discard", { handle }),
   },
+  pqRatchet: {
+    /** Responder: a new session and the RVE2 bundle to hand (authenticated) to the initiator. */
+    initResponder: (userId: string, context: string) => callEnclave("pq_ratchet.init_session", { userId, role: "responder", context }),
+    /** Initiator: a new session aimed at a bundle the caller has authenticated. */
+    initInitiator: (userId: string, context: string, peerBundle: Uint8Array) =>
+      callEnclave("pq_ratchet.init_session", { userId, role: "initiator", context, peerBundle: peerBundle.slice() }),
+    /** Plaintext is transferred (the caller's copy is emptied). */
+    encrypt: (userId: string, sessionId: string, plaintext: Uint8Array) =>
+      callEnclave("pq_ratchet.ratchet_encrypt", { userId, sessionId, plaintext }, moved(plaintext)),
+    decrypt: (userId: string, sessionId: string, envelope: Uint8Array) =>
+      callEnclave("pq_ratchet.ratchet_decrypt", { userId, sessionId, envelope: envelope.slice() }),
+    close: (userId: string, sessionId: string) => callEnclave("pq_ratchet.close_session", { userId, sessionId }),
+  },
   guestVault: {
     /** Passkey output → worker (transferred: the caller's copies are emptied). Use guest-passkey.ts to obtain it. */
     unlock: (input: { credentialId: string; prf?: Uint8Array; signatures?: Uint8Array[] }) =>

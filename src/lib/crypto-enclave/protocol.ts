@@ -245,6 +245,22 @@ export interface EnclaveOps {
   };
   /** Zero-fills SK_guest, forgets the storage key and every guest booking held in memory; the ciphertext stays on disk. */
   "guest_vault.lock": { req: Record<string, never>; res: { locked: boolean; wiped: number } };
+  /**
+   * Stap 8 (pq-ratchet.ts): hybrid ML-KEM-1024 + X25519 double ratchet with
+   * RVE2 envelopes. The responder gets the RVE2 bundle to hand to the
+   * initiator; the initiator must have authenticated that bundle. Both pass
+   * the same context (the two identities and the conversation). The session
+   * state stays in the worker.
+   */
+  "pq_ratchet.init_session": {
+    req: { userId: string; role: "responder"; context: string } | { userId: string; role: "initiator"; context: string; peerBundle: Uint8Array };
+    res: { sessionId: string; bundle?: Uint8Array };
+  };
+  /** Plaintext transferred in and wiped; returns one RVE2 envelope. */
+  "pq_ratchet.ratchet_encrypt": { req: { userId: string; sessionId: string; plaintext: Uint8Array }; res: { envelope: Uint8Array } };
+  /** decrypt_failed for a forged, replayed or altered envelope; the session state is then unchanged. */
+  "pq_ratchet.ratchet_decrypt": { req: { userId: string; sessionId: string; envelope: Uint8Array }; res: { plaintext: Uint8Array } };
+  "pq_ratchet.close_session": { req: { userId: string; sessionId: string }; res: { closed: boolean } };
   "anon_guest.present": {
     req: { handle: string; challenge: Uint8Array; windowStart: number; windowEnd: number };
     res: { presentation: Uint8Array; nullifier: Uint8Array; pseudonym: Uint8Array; keyId: string; epoch: number; messages: Uint8Array[] };

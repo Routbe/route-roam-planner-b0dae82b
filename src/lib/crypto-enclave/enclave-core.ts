@@ -83,6 +83,7 @@ import {
   verifySlotCredential,
 } from "./anon-booking";
 import { guestVault, GuestVaultError } from "./guest-vault";
+import { isPqSessionId, pqrDecrypt, pqrEncrypt, pqrInitiatorInit, pqrResponderInit, pqSessions, PQR_BUNDLE_BYTES, PQR_MAX_PLAINTEXT } from "./pq-ratchet";
 import {
   RECOVERY_FACTORS,
   VERSION_FACTORS,
@@ -1261,6 +1262,62 @@ const coreHandlers: CoreHandlers = {
   async "guest_vault.lock"() {
     const locked = guestVault.lock();
     return { locked, wiped: guestBookings.wipeAll() };
+  },
+
+  async "pq_ratchet.init_session"(args) {
+    const owner = str(args.userId, 200);
+    const context = str(args.context, 512);
+    if (args.role === "responder") {
+      const { state, bundle } = await zkOp(() => pqrResponderInit(context));
+      const sessionId = shaped(() => pqSessions.create(owner, state));
+      return { sessionId, bundle };
+    }
+    if (args.role !== "initiator") fail("invalid_input");
+    const peer = bytes(args.peerBundle);
+    if (peer.length !== PQR_BUNDLE_BYTES) fail("invalid_input");
+    const state = await zkOp(() => pqrInitiatorInit(context, peer));
+    return { sessionId: shaped(() => pqSessions.create(owner, state)) };
+  },
+
+  async "pq_ratchet.ratchet_encrypt"({ userId, sessionId, plaintext }) {
+    const owner = str(userId, 200);
+    const pt = bytes(plaintext);
+    try {
+      if (!isPqSessionId(sessionId) || pt.length > PQR_MAX_PLAINTEXT) fail("invalid_input");
+      const envelope = await zkOp(() =>
+        pqSessions.run(owner, sessionId, async (state) => {
+          const r = await pqrEncrypt(state, pt);
+          return { next: r.next, out: r.envelope };
+        }));
+      return { envelope };
+    } finally {
+      wipe(pt);
+    }
+  },
+
+  async "pq_ratchet.ratchet_decrypt"({ userId, sessionId, envelope }) {
+    const owner = str(userId, 200);
+    const env = bytes(envelope);
+    if (!isPqSessionId(sessionId)) fail("invalid_input");
+    try {
+      const plaintext = await pqSessions.run(owner, sessionId, async (state) => {
+        const r = await pqrDecrypt(state, env);
+        return { next: r.next, out: r.plaintext };
+      });
+      return { plaintext };
+    } catch (e) {
+      if (e instanceof ZkEngineError) {
+        if (e.code === "zk_rejected") return fail("decrypt_failed");
+        return fail(e.code === "zk_invalid_input" ? "invalid_input" : "enclave_unavailable");
+      }
+      throw e;
+    }
+  },
+
+  async "pq_ratchet.close_session"({ userId, sessionId }) {
+    const owner = str(userId, 200);
+    if (!isPqSessionId(sessionId)) fail("invalid_input");
+    return { closed: pqSessions.close(owner, sessionId) };
   },
 
   async "anon_host.verify_presentation"({ anchor, links, epoch, minEpoch, presentation, messages, nullifier, challenge, windowStart, windowEnd }) {
