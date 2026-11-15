@@ -116,8 +116,7 @@ export class DailyEpochRatchet {
         return { status: "retrying", epoch: step.to, target };
       }
       this.pending = null;
-      const settled = settle(answer, step.to, target);
-      if (settled.status !== "advanced") return settled;
+      if (answer !== "ok" && answer !== "replay") return settle(answer, step.to, target);
     }
     let held: number;
     try {
