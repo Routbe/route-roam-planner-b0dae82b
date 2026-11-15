@@ -103,9 +103,10 @@ fn handshake_and_hybrid_exchange_round_trip() {
 fn both_shares_bind_the_root_key() {
     // A responder whose ML-KEM seed or X25519 secret differs from the bundle it
     // published cannot open the first message: each share alone changes RK.
-    for (at, len) in [(off::OWN_KEM_SEED, 64usize), (off::OWN_X_SK, 32usize)] {
+    // (The ML-KEM seed is d || z; d determines the key pair, z only the implicit-rejection value.)
+    for at in [off::OWN_KEM_SEED, off::OWN_X_SK + 1] {
         let (mut alice, mut bob) = pair();
-        bob.state[at + len - 1] ^= 1;
+        bob.state[at] ^= 1;
         let before = bob.state.clone();
         let e1 = alice.send(b"bound");
         assert_eq!(bob.recv(&e1), Err(Error::Rejected));
