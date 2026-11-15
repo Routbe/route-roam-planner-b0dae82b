@@ -174,12 +174,12 @@
   - [ ] Externe audit van de eigen BBS-, Bulletproofs-, Poseidon- en SMT-code (regel 'audited libraries' in booking-engine/AGENTS.md)
   - [x] 7c: Poseidon (referentie x5_255_3, constanten via Grain herberekend en gelijk) + 256-diepe nullifier-SMT met NonExist/Exist, hergebruik geweigerd; ondertekende root (BBS, eigen sleutel uit device-seed) per epoch; worker-ops smt.genesis / smt.insert_nullifier / smt.verify_non_membership / smt.verify_signed_root
   - [ ] 7c vervolg: blijvende bescherming tegen terugdraaien van een oude ondertekende root (nu alleen high-water mark in het werkgeheugen) via externe verankering
-  - [ ] 7c vervolg: meerdere toestellen van één host (nu tekent elk toestel met een eigen rootsleutel)
+  - [x] 7c vervolg: meerdere toestellen van één host — elk toestel eigen keten, boom en rootsleutel (0274, wacht op GO)
   - [x] 7a: pseudonyms.ts + worker-op `pseudonym.derive` (HKDF-Expand + HMAC-SHA256, gedeelde vector met Rust)
   - [x] 7f: gast-adapters in de worker (anon_guest.begin/accept/present/discard, anon_host.verify_presentation, capacity.*), geheimen alleen in de worker
   - [x] 7f: eigen anonieme ledger (anon_ledger_events, hash-keten per boom, client-verifier anon-ledger.ts byte-gelijk aan SQL); 0265 ongemoeid
   - [x] 7f: end-to-end test (worker + 0273 op PGlite): twee anonieme gasten, dubbel uitgeven geweigerd, derde plaats onmogelijk, herladen via verzegelde staat
-  - [ ] Gast-credential bewaren tussen boeking en aankomst (nu alleen in het werkgeheugen van de worker)
+  - [x] Gast-credential bewaren tussen boeking en aankomst: versleuteld in vault_guest_storage (7g)
   - [x] Besluit (eigenaar 2026-11-15): master_seed van de gast uit de WebAuthn-`prf`-extensie (zonder PRF: HKDF over de assertion-handtekening); lopende bewijzen en SK_guest in IndexedDB `vault_guest_storage`, versleuteld onder die lokale sleutel
   - [x] 7e: db-pending/0273 + idempotente rollback (deny_all, definers, 7 audit-acties) + PGlite-test (replay → 0273 → rollback → 0273, schema-vingerafdruk gelijk, fast-check-model + 2×70 interleavings)
   - [x] Volledige suite + typecheck
@@ -188,16 +188,16 @@
   - [x] Besluit (eigenaar 2026-11-15): elk hosttoestel een eigen keten SK_t,dev, geregistreerd als toegestaan toestel onder de Host Root Identity
   - [x] 0273 live op Neon (GO eigenaar 2026-11-15, 07:39 UTC) via scripts/migration-rollout.ts: één transactie, checksum c0d26bd1…b458 in de transactie gecontroleerd, alle vingerafdrukken gelijk aan de replay
   - [ ] Productie meldt 0273 pas na een deploy naar Vercel (health meldt nu 0272)
-- [ ] Stap 7g: besluiten eigenaar 2026-11-15 uitvoeren (GO eigenaar 2026-11-15 08:50: 7g + ontwerp 0274, 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
-  - [ ] guest-vault.ts: PRF-seed (+ HKDF-fallback), AES-256-GCM in IndexedDB vault_guest_storage, niets onversleuteld
-  - [ ] /@host/zkp-anchor.json: PK_0 per toestel, ondertekend door MDS3-geattesteerde passkey
-  - [ ] Dagelijkse ratchet 00:00 UTC: oude SK gewist in de Wasm-arena, vault_enclave-rij bijgewerkt
-  - [ ] db-pending/0274 multi-device + rollback + PGlite 0267→0273→0274→rollback→0274
-  - [ ] Tests, volledige suite, tsgo, HANDOVER-bijlage
-  - [ ] Gast: seed uit WebAuthn PRF (fallback HKDF over de assertion-handtekening) in de worker; bewijzen + SK_guest versleuteld in IndexedDB `vault_guest_storage`
-  - [ ] Host: `zkp-anchor.json` op het publieke profiel, ondertekend via een WebAuthn-assertion van een MDS3-geattesteerde passkey (0271-oordeel)
-  - [ ] Epoch-klok: 24 uur, overgang 00:00 UTC (advance bij eerste gebruik na middernacht, inhaalsprong ≤ MAX_EPOCH_ADVANCE)
-  - [ ] Meerdere toestellen: device-register onder de Host Root Identity + per-toestel ketens; vraagt migratie 0274 (0273 staat één actieve keten per host toe) — wacht op ontwerp en GO
+- [x] Stap 7g: besluiten eigenaar 2026-11-15 gebouwd (GO eigenaar 2026-11-15 08:50; 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
+  - [x] guest-vault.ts: seed uit WebAuthn PRF (fallback HKDF over de handtekening, alleen als twee assertions byte-gelijk zijn), SK_guest + boekingen als AES-256-GCM in IndexedDB vault_guest_storage (emmers van 4096 bytes), worker-ops guest_vault.unlock/lock, herladen getest
+  - [x] guest-passkey.ts: PRF-assertion en gast-passkey aanmaken in de browser (nog geen scherm)
+  - [x] /@host/zkp-anchor.json: route + document per toestel (PK_0, links, passkey-assertion, MDS3-oordeel); verifier voor gasten (ES256/EdDSA/RS256); geeft 404 not_available tot 0274 live is
+  - [x] Dagelijkse ratchet 00:00 UTC (epoch = UTC-dag): DailyEpochRatchet, inhaalsprong, single-flight, opnieuw versturen; Wasm-geheugen na de stap nul, oude SK in place overschreven, nieuwe envelop in de eigen vault_enclave-rij
+  - [x] db-pending/0274 + rollback: anon_host_devices, anon_anchor_endorsements, één live keten per toestel (max 16), register/revoke/list/passkey/publiek anker, purge en merge uitgebreid; PGlite 0267→0273→0274→rollback→0274 groen
+  - [x] Volledige suite 3124 groen (9 overgeslagen), tsgo 0 fouten, HANDOVER-bijlage
+  - [ ] GO eigenaar voor 0274 op Neon (daarna naar db/, CODE_SCHEMA_LEVEL 0274, snapshot)
+  - [ ] Serverfuncties + schermen: host registreert toestel en start de ratchet; gast opent kluis en boekt (nu alleen bouwstenen + tests)
+  - [ ] Keten vol na 1024 links (≈ 2,8 jaar dagelijks): oude keten intrekken en een nieuwe op hetzelfde toestel registreren (0274 laat dat toe), nog geen scherm
 - [ ] Stap 8: hybride PQ-ratchet + RVE2
 - [ ] Stap 9: RLS non-interference-model (Z3/Lean) vergeleken met de snapshot in CI
 - [x] /secure/*-documenten met COOP/COEP (wachtwoordpagina's)
