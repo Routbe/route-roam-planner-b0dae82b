@@ -82,6 +82,7 @@ import {
   verifyHostAnchor,
   verifySlotCredential,
 } from "./anon-booking";
+import { guestVault, GuestVaultError } from "./guest-vault";
 import {
   RECOVERY_FACTORS,
   VERSION_FACTORS,
@@ -190,6 +191,22 @@ const u64Arg = (v: unknown): number => (typeof v === "number" && Number.isSafeIn
 /** The held host key of this member, or invalid_input. */
 function hostSlot(owner: string, keyId: string) {
   return hostKeys.get(owner, keyId) ?? fail("invalid_input");
+}
+
+/** Writes one guest booking to the open guest vault (ciphertext only); false when locked or the write failed. */
+async function persistGuestBooking(handle: string): Promise<boolean> {
+  if (!guestVault.isOpen) return false;
+  const data = guestBookings.exportSlot(handle);
+  if (!data) return false;
+  try {
+    await guestVault.putBooking(handle, data);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (data.credential) wipe(data.credential.signature, ...data.credential.messages);
+    wipe(data.nullifier, data.bookingNonce, data.seed, data.proverBlind, data.pseudonym);
+  }
 }
 
 // ---- Held state (all of it wiped on discard / expiry) ----------------------
@@ -1168,8 +1185,15 @@ const coreHandlers: CoreHandlers = {
 
   async "anon_guest.begin"({ hostId, keyId }) {
     const handle = newHandle();
-    const r = await zkOp(() => guestBookings.begin(handle, str(hostId, 256), str(keyId, 256)));
-    return { handle, commitmentWithProof: r.commitmentWithProof, pseudonym: r.pseudonym };
+    const seed = guestVault.bookingSeed();
+    let r: Awaited<ReturnType<typeof guestBookings.begin>>;
+    try {
+      r = await zkOp(() => guestBookings.begin(handle, str(hostId, 256), str(keyId, 256), Date.now(), seed ?? undefined));
+    } finally {
+      wipe(seed);
+    }
+    const persisted = await persistGuestBooking(handle);
+    return { handle, commitmentWithProof: r.commitmentWithProof, pseudonym: r.pseudonym, persisted };
   },
 
   async "anon_guest.accept"({ handle, anchor, links, epoch, slot, messages, signature }) {
@@ -1184,8 +1208,9 @@ const coreHandlers: CoreHandlers = {
     const pk = await zkOp(() => epochPublicKey({ keyId: a.keyId, publicKey: a.publicKey.slice() }, chain.map(copyLink), e));
     if (!pk) return { valid: false };
     const valid = await zkOp(() => verifySlotCredential(pk, a.keyId, e, sig, s, msgs, g.nullifier, g.proverBlind));
-    if (valid) guestBookings.accept(str(handle, 64), { keyId: a.keyId, epoch: e, slot: BigInt(s), messages: msgs, signature: sig, publicKey: pk });
-    return { valid };
+    if (!valid) return { valid };
+    guestBookings.accept(str(handle, 64), { keyId: a.keyId, epoch: e, slot: BigInt(s), messages: msgs, signature: sig, publicKey: pk });
+    return { valid, persisted: await persistGuestBooking(str(handle, 64)) };
   },
 
   async "anon_guest.present"({ handle, challenge, windowStart, windowEnd }) {
@@ -1199,7 +1224,43 @@ const coreHandlers: CoreHandlers = {
   },
 
   async "anon_guest.discard"({ handle }) {
-    return { discarded: guestBookings.discard(str(handle, 64)) };
+    const h = str(handle, 64);
+    const discarded = guestBookings.discard(h);
+    if (guestVault.isOpen) await guestVault.deleteBooking(h).catch(() => undefined);
+    return { discarded };
+  },
+
+  async "guest_vault.unlock"({ credentialId, prf, signatures }) {
+    const input = {
+      credentialId: str(credentialId, 1366),
+      ...(prf === undefined ? {} : { prf: bytes(prf) }),
+      ...(signatures === undefined ? {} : { signatures: Array.isArray(signatures) && signatures.length <= 2 ? signatures.map(bytes) : fail("invalid_input") }),
+    };
+    let opened: Awaited<ReturnType<typeof guestVault.unlock>>;
+    try {
+      opened = await guestVault.unlock(input);
+    } catch (e) {
+      if (e instanceof GuestVaultError) {
+        if (e.code === "guest_vault_no_stable_secret") return fail("no_stable_secret");
+        if (e.code === "guest_vault_wrong_passkey") return fail("decrypt_failed");
+        if (e.code === "guest_vault_storage") return fail("enclave_unavailable");
+        return fail("invalid_input");
+      }
+      throw e;
+    }
+    // Another passkey's bookings never stay in memory next to this one's.
+    guestBookings.wipeAll();
+    const restored: { handle: string; hostId: string; keyId: string; accepted: boolean; expiresAt: number }[] = [];
+    for (const { handle, data } of opened.bookings) {
+      const meta = { handle, hostId: data.hostId, keyId: data.keyId, accepted: data.credential !== null, expiresAt: data.expiresAt };
+      if (guestBookings.restore(handle, data)) restored.push(meta);
+    }
+    return { scope: opened.scope, method: opened.method, created: opened.created, dropped: opened.dropped, restored };
+  },
+
+  async "guest_vault.lock"() {
+    const locked = guestVault.lock();
+    return { locked, wiped: guestBookings.wipeAll() };
   },
 
   async "anon_host.verify_presentation"({ anchor, links, epoch, minEpoch, presentation, messages, nullifier, challenge, windowStart, windowEnd }) {

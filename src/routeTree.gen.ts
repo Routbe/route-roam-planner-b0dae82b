@@ -74,6 +74,7 @@ import { Route as UsernameBookingRouteImport } from './routes/$username_.booking
 import { Route as UsernameDonateRouteImport } from './routes/$username_.donate'
 import { Route as UsernameLiveRouteImport } from './routes/$username_.live'
 import { Route as UsernameTipRouteImport } from './routes/$username_.tip'
+import { Route as UsernameZkpAnchorDotjsonRouteImport } from './routes/$username_.zkp-anchor[.]json'
 import { Route as DotwellKnownAtprotoDidRouteImport } from './routes/[.]well-known.atproto-did'
 import { Route as DotwellKnownJwksDotjsonRouteImport } from './routes/[.]well-known.jwks[.]json'
 import { Route as DotwellKnownOpenapiDotjsonRouteImport } from './routes/[.]well-known.openapi[.]json'
@@ -767,6 +768,12 @@ const UsernameTipRoute = UsernameTipRouteImport.update({
   path: '/$username/tip',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UsernameZkpAnchorDotjsonRoute =
+  UsernameZkpAnchorDotjsonRouteImport.update({
+    id: '/$username_/zkp-anchor.json',
+    path: '/$username/zkp-anchor.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotwellKnownAtprotoDidRoute = DotwellKnownAtprotoDidRouteImport.update({
   id: '/.well-known/atproto-did',
   path: '/.well-known/atproto-did',
@@ -2794,6 +2801,7 @@ export interface FileRoutesByFullPath {
   '/$username/donate': typeof UsernameDonateRoute
   '/$username/live': typeof UsernameLiveRoute
   '/$username/tip': typeof UsernameTipRoute
+  '/$username/zkp-anchor.json': typeof UsernameZkpAnchorDotjsonRoute
   '/.well-known/atproto-did': typeof DotwellKnownAtprotoDidRoute
   '/.well-known/jwks.json': typeof DotwellKnownJwksDotjsonRoute
   '/.well-known/openapi.json': typeof DotwellKnownOpenapiDotjsonRoute
@@ -3216,6 +3224,7 @@ export interface FileRoutesByTo {
   '/$username/donate': typeof UsernameDonateRoute
   '/$username/live': typeof UsernameLiveRoute
   '/$username/tip': typeof UsernameTipRoute
+  '/$username/zkp-anchor.json': typeof UsernameZkpAnchorDotjsonRoute
   '/.well-known/atproto-did': typeof DotwellKnownAtprotoDidRoute
   '/.well-known/jwks.json': typeof DotwellKnownJwksDotjsonRoute
   '/.well-known/openapi.json': typeof DotwellKnownOpenapiDotjsonRoute
@@ -3647,6 +3656,7 @@ export interface FileRoutesById {
   '/$username_/donate': typeof UsernameDonateRoute
   '/$username_/live': typeof UsernameLiveRoute
   '/$username_/tip': typeof UsernameTipRoute
+  '/$username_/zkp-anchor.json': typeof UsernameZkpAnchorDotjsonRoute
   '/.well-known/atproto-did': typeof DotwellKnownAtprotoDidRoute
   '/.well-known/jwks.json': typeof DotwellKnownJwksDotjsonRoute
   '/.well-known/openapi.json': typeof DotwellKnownOpenapiDotjsonRoute
@@ -4083,6 +4093,7 @@ export interface FileRouteTypes {
     | '/$username/donate'
     | '/$username/live'
     | '/$username/tip'
+    | '/$username/zkp-anchor.json'
     | '/.well-known/atproto-did'
     | '/.well-known/jwks.json'
     | '/.well-known/openapi.json'
@@ -4505,6 +4516,7 @@ export interface FileRouteTypes {
     | '/$username/donate'
     | '/$username/live'
     | '/$username/tip'
+    | '/$username/zkp-anchor.json'
     | '/.well-known/atproto-did'
     | '/.well-known/jwks.json'
     | '/.well-known/openapi.json'
@@ -4935,6 +4947,7 @@ export interface FileRouteTypes {
     | '/$username_/donate'
     | '/$username_/live'
     | '/$username_/tip'
+    | '/$username_/zkp-anchor.json'
     | '/.well-known/atproto-did'
     | '/.well-known/jwks.json'
     | '/.well-known/openapi.json'
@@ -5371,6 +5384,7 @@ export interface RootRouteChildren {
   UsernameDonateRoute: typeof UsernameDonateRoute
   UsernameLiveRoute: typeof UsernameLiveRoute
   UsernameTipRoute: typeof UsernameTipRoute
+  UsernameZkpAnchorDotjsonRoute: typeof UsernameZkpAnchorDotjsonRoute
   DotwellKnownAtprotoDidRoute: typeof DotwellKnownAtprotoDidRoute
   DotwellKnownJwksDotjsonRoute: typeof DotwellKnownJwksDotjsonRoute
   DotwellKnownOpenapiDotjsonRoute: typeof DotwellKnownOpenapiDotjsonRoute
@@ -5998,6 +6012,13 @@ declare module '@tanstack/react-router' {
       path: '/$username/tip'
       fullPath: '/$username/tip'
       preLoaderRoute: typeof UsernameTipRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$username_/zkp-anchor.json': {
+      id: '/$username_/zkp-anchor.json'
+      path: '/$username/zkp-anchor.json'
+      fullPath: '/$username/zkp-anchor.json'
+      preLoaderRoute: typeof UsernameZkpAnchorDotjsonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.well-known/atproto-did': {
@@ -9265,6 +9286,7 @@ const rootRouteChildren: RootRouteChildren = {
   UsernameDonateRoute: UsernameDonateRoute,
   UsernameLiveRoute: UsernameLiveRoute,
   UsernameTipRoute: UsernameTipRoute,
+  UsernameZkpAnchorDotjsonRoute: UsernameZkpAnchorDotjsonRoute,
   DotwellKnownAtprotoDidRoute: DotwellKnownAtprotoDidRoute,
   DotwellKnownJwksDotjsonRoute: DotwellKnownJwksDotjsonRoute,
   DotwellKnownOpenapiDotjsonRoute: DotwellKnownOpenapiDotjsonRoute,

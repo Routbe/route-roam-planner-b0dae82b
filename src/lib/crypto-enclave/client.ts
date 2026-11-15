@@ -239,6 +239,12 @@ export const enclave = {
       callEnclave("anon_guest.present", { handle, challenge: challenge.slice(), windowStart, windowEnd }),
     discard: (handle: string) => callEnclave("anon_guest.discard", { handle }),
   },
+  guestVault: {
+    /** Passkey output → worker (transferred: the caller's copies are emptied). Use guest-passkey.ts to obtain it. */
+    unlock: (input: { credentialId: string; prf?: Uint8Array; signatures?: Uint8Array[] }) =>
+      callEnclave("guest_vault.unlock", input, moved(input.prf, ...(input.signatures ?? []))),
+    lock: () => callEnclave("guest_vault.lock", {}),
+  },
   anonHost: {
     verifyPresentation: (input: {
       anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; minEpoch?: number; presentation: Uint8Array; messages: Uint8Array[];

@@ -227,11 +227,24 @@ export interface EnclaveOps {
    * `handle`; the UI gets the commitment, the per-booking pseudonym and, at
    * arrival, the presentation with the disclosed nullifier.
    */
-  "anon_guest.begin": { req: { hostId: string; keyId: string }; res: { handle: string; commitmentWithProof: Uint8Array; pseudonym: Uint8Array } };
+  "anon_guest.begin": { req: { hostId: string; keyId: string }; res: { handle: string; commitmentWithProof: Uint8Array; pseudonym: Uint8Array; persisted: boolean } };
   "anon_guest.accept": {
     req: { handle: string; anchor: HostKeyAnchor; links: EpochLink[]; epoch: number; slot: number; messages: Uint8Array[]; signature: Uint8Array };
-    res: { valid: boolean };
+    res: { valid: boolean; persisted?: boolean };
   };
+  /**
+   * Guest vault (Stap 7g, guest-vault.ts). `prf` is the 32-byte WebAuthn PRF
+   * output; without PRF, `signatures` are two assertion signatures over the
+   * fixed fallback challenge, accepted only when identical. Both are
+   * transferred and wiped. Opens (or creates) the encrypted IndexedDB records
+   * of this passkey and re-installs the guest's bookings in progress.
+   */
+  "guest_vault.unlock": {
+    req: { credentialId: string; prf?: Uint8Array; signatures?: Uint8Array[] };
+    res: { scope: string; method: "prf" | "signature"; created: boolean; dropped: number; restored: { handle: string; hostId: string; keyId: string; accepted: boolean; expiresAt: number }[] };
+  };
+  /** Zero-fills SK_guest, forgets the storage key and every guest booking held in memory; the ciphertext stays on disk. */
+  "guest_vault.lock": { req: Record<string, never>; res: { locked: boolean; wiped: number } };
   "anon_guest.present": {
     req: { handle: string; challenge: Uint8Array; windowStart: number; windowEnd: number };
     res: { presentation: Uint8Array; nullifier: Uint8Array; pseudonym: Uint8Array; keyId: string; epoch: number; messages: Uint8Array[] };
@@ -285,6 +298,7 @@ export type EnclaveErrorCode =
   | "password_too_short"
   | "password_too_long"
   | "pow_failed"
+  | "no_stable_secret"
   | "internal";
 
 export type EnclaveResponse =
