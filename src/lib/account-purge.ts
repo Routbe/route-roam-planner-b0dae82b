@@ -7,7 +7,7 @@ export const PURGE_OWNER_TABLES = [
   "subdomain_root_claims", "security_audit_logs", "invoice_deliveries",
 ] as const;
 
-/** Present once db-pending/0273 (anonymous booking engine) is applied; detected per purge run. */
+/** Present once db/0273 (anonymous booking engine) is applied; detected per purge run. */
 export const ANON_BOOKING_PURGE_PROBE = `select to_regprocedure('public.rout_anon_booking_purge(uuid)') is not null as present`;
 
 /**
@@ -43,7 +43,7 @@ export function accountPurgeStatements(userId: string, authId: string, opts: { a
     })),
     { query: `delete from neon_auth.verification where identifier in (select email from neon_auth."user" where id::text = $1)`, params: [authId] },
     { query: `delete from neon_auth."user" where id::text = $1`, params: [authId] },
-    // The database re-checks that this deletion is due (db-pending/0273, rout_purge_due).
+    // The database re-checks that this deletion is due (db/0273, rout_purge_due).
     ...(opts.anonBooking ? [{ query: `select public.rout_anon_booking_purge($1::uuid)`, params }] : []),
     { query: `delete from public.users where id = $1`, params },
     { query: `delete from public.account_deletions where user_id = $1`, params },

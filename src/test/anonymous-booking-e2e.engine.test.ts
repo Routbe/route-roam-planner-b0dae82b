@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * Stap 7f end to end: one complete anonymous guest booking through the real
- * crypto-worker ops (locally built rout-zk, ABI 5) and db-pending/0273 on a
+ * crypto-worker ops (locally built rout-zk, ABI 5) and db/0273 on a
  * PGlite replay of db/. Nothing touches Neon; CODE_SCHEMA_LEVEL stays 0272.
  * Skipped unless ROUT_ZK_DEV_WASM points at a local build
  * (wasm/rout-zk/build.sh --dev /tmp/rout_zk.wasm), because the committed pin
@@ -35,7 +35,7 @@ import { SMT_DEPTH, SMT_NODE_BYTES, smtEmptyPath, type SignedRoot } from "@/lib/
 import { lastZkMemoryForTest } from "@/lib/crypto-enclave/zk-engine";
 
 const ROOT = join(__dirname, "..", "..");
-const SQL = readFileSync(join(ROOT, "db-pending", "0273_anonymous_booking_engine.sql"), "utf8");
+const SQL = readFileSync(join(ROOT, "db", "0273_anonymous_booking_engine.sql"), "utf8");
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
 const unhex = (h: string) => new Uint8Array(Buffer.from(h.replace(/^\\x/, ""), "hex"));
 const enc = new TextEncoder();

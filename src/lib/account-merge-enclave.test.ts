@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 import { ENCLAVE_MERGE_TABLES } from "./account-merge-rules";
 import { accountPurgeStatements, ANON_BOOKING_PURGE_PROBE } from "./account-purge";
 
-const SQL = readFileSync(join(__dirname, "..", "..", "db-pending", "0273_anonymous_booking_engine.sql"), "utf8");
+const SQL = readFileSync(join(__dirname, "..", "..", "db", "0273_anonymous_booking_engine.sql"), "utf8");
 const tables = [...SQL.matchAll(/create table vault_enclave\.(anon_\w+)/g)].map((m) => m[1]!).sort();
 
-describe("anonymous booking tables in account merge and purge (db-pending/0273)", () => {
+describe("anonymous booking tables in account merge and purge (db/0273)", () => {
   it("every anon table of 0273 has a reviewed merge strategy, and only the chain row names a member", () => {
     expect(Object.keys(ENCLAVE_MERGE_TABLES).sort()).toEqual(tables);
     expect(tables).toHaveLength(9);

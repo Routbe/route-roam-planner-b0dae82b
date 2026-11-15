@@ -1,9 +1,9 @@
 // @vitest-environment node
 /**
- * db-pending/0273 (Stap 7e/7f, anonymous booking engine) and its rollback, on
- * PGlite over a replay of every migration in db/ (… 0267 → 0270 → 0271 →
- * 0272), then 0273 → rollback → 0273. Nothing here touches Neon, and 0273 is
- * not in db/: CODE_SCHEMA_LEVEL stays 0272.
+ * db/0273 (Stap 7e/7f, anonymous booking engine; moved into db/ after the
+ * owner's GO of 2026-11-15) and its rollback (db-pending/), on PGlite over a
+ * replay of every migration in db/ before 0273 (… 0267 → 0270 → 0271 → 0272),
+ * then 0273 → rollback → 0273. Nothing here touches Neon.
  *
  * The database stores signatures, roots and proofs but cannot verify pairings,
  * so these tests use random bytes of the exact sizes the crypto worker
@@ -33,7 +33,7 @@ import { contextStatements } from "@/lib/db-context";
 
 const ROOT = join(__dirname, "..", "..");
 const FILE = "0273_anonymous_booking_engine.sql";
-const SQL = readFileSync(join(ROOT, "db-pending", FILE), "utf8");
+const SQL = readFileSync(join(ROOT, "db", FILE), "utf8");
 const ROLLBACK = readFileSync(join(ROOT, "db-pending", "0273_anonymous_booking_engine_rollback.sql"), "utf8");
 const SQL_0272 = readFileSync(join(ROOT, "db", "0272_dynamic_recovery_v4.sql"), "utf8");
 
@@ -147,7 +147,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     const { pgcrypto } = await import("@electric-sql/pglite/contrib/pgcrypto");
     db = await PGlite.create({ extensions: { pgcrypto, btree_gist } });
     const dir = join(ROOT, "db");
-    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run").map((s) => s.file);
+    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run" && s.file !== FILE).map((s) => s.file);
     expect(run.slice(-4)).toEqual(["0267_card_recovery_factor_tap.sql", "0270_opaque_password_pow.sql", "0271_fido_mds3_attestation.sql", "0272_dynamic_recovery_v4.sql"]);
     for (const file of run) await db.exec(`begin;\n${readFileSync(join(dir, file), "utf8")}\n;commit;`);
     HOST = await newUser();
@@ -156,10 +156,11 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
   }, 300_000);
   afterAll(async () => db?.close());
 
-  it("0273 stays held back: not in db/, CODE_SCHEMA_LEVEL is 0272", () => {
-    expect(CODE_SCHEMA_LEVEL).toBe("0272");
-    expect(readdirSync(join(ROOT, "db")).some((f) => f.startsWith("0273"))).toBe(false);
-    expect(existsSync(join(ROOT, "db-pending", FILE))).toBe(true);
+  it("0273 is released: in db/ (not db-pending/), CODE_SCHEMA_LEVEL is 0273, the rollback stays held back", () => {
+    expect(CODE_SCHEMA_LEVEL).toBe("0273");
+    expect(readdirSync(join(ROOT, "db")).filter((f) => f.startsWith("0273"))).toEqual([FILE]);
+    expect(existsSync(join(ROOT, "db-pending", FILE))).toBe(false);
+    expect(existsSync(join(ROOT, "db-pending", "0273_anonymous_booking_engine_rollback.sql"))).toBe(true);
   });
 
   it("0272 → 0273 → rollback leaves a schema identical to 0272; the rollback is idempotent; 0273 applies again identically", async () => {

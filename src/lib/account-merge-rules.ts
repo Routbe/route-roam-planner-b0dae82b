@@ -237,7 +237,7 @@ export function mergeAttemptAllowed(failures: number | null): boolean {
 }
 
 /**
- * Anonymous booking engine tables (vault_enclave, db-pending/0273). They are
+ * Anonymous booking engine tables (vault_enclave, db/0273). They are
  * outside the generated merge SQL: execute_account_merge calls
  * public.rout_anon_booking_merge right before it deletes the secondary user
  * row, and every foreign key there is ON DELETE RESTRICT, so a table missing
