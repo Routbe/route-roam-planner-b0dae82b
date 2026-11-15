@@ -15,6 +15,7 @@ use bls12_381::Scalar;
 use crate::core_bbs::{self, Msg};
 use crate::forward_secure::{self as fs, EpochKey, STATE_LEN};
 use crate::limits::{MAX_BLIND_MESSAGES, MAX_MESSAGES, MAX_SIGNER_MESSAGES};
+use crate::pq_ratchet as pqr;
 use crate::pseudonym;
 use crate::smt::{self, NODE_LEN, NULLIFIER_LEN, PATH_LEN, SIBLINGS_LEN};
 use crate::random::FromOctets;
@@ -107,8 +108,9 @@ pub extern "C" fn rout_zk_abi_version() -> u32 {
     // 1 = BBS / Blind BBS / pseudonym (7a); 2 = + Pedersen and range proofs (7b);
     // 3 = + Poseidon SMT nullifiers with signed roots (7c);
     // 4 = + forward-secure host keys per epoch (7d);
-    // 5 = + slot credentials, anonymous window presentations and capacity pools (7f).
-    5
+    // 5 = + slot credentials, anonymous window presentations and capacity pools (7f);
+    // 6 = + hybrid post-quantum double ratchet with RVE2 envelopes (Stap 8).
+    6
 }
 
 #[no_mangle]
@@ -666,5 +668,57 @@ pub unsafe extern "C" fn rout_zk_capacity_verify_take(
             input(before, 48), input(take, 48), input(after, 48), input(pool, pool_len), step, input(proofs, anon::CAPACITY_PROOFS_LEN),
         )?;
         Ok(0)
+    })())
+}
+
+// ---------------------------------------------------------------- Stap 8: PQ double ratchet
+
+/// Fixed size of a ratchet state (the host checks it against its own constant).
+#[no_mangle]
+pub extern "C" fn rout_zk_pqr_state_len() -> u32 {
+    pqr::STATE_LEN as u32
+}
+
+/// context -> state (STATE_LEN) and RVE2 bundle (BUNDLE_LEN). The X25519
+/// secret and the ML-KEM seed come from the host CSPRNG and are wiped.
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_pqr_responder_init(ctx: usize, ctx_len: usize, out_state: usize, out_bundle: usize) -> i32 {
+    code((|| {
+        let mut r = [0u8; pqr::RESPONDER_RANDOM_LEN];
+        rout_random(r.as_mut_ptr(), r.len());
+        let res = pqr::responder_init(&r, input(ctx, ctx_len), output(out_state, pqr::STATE_LEN), output(out_bundle, pqr::BUNDLE_LEN));
+        wipe::bytes(&mut r);
+        res?;
+        Ok(0)
+    })())
+}
+
+/// context | RVE2 bundle -> state (STATE_LEN).
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_pqr_initiator_init(ctx: usize, ctx_len: usize, bundle: usize, bundle_len: usize, out_state: usize) -> i32 {
+    code((|| {
+        pqr::initiator_init(input(ctx, ctx_len), input(bundle, bundle_len), output(out_state, pqr::STATE_LEN))?;
+        Ok(0)
+    })())
+}
+
+/// state (in/out, replaced only on success) | plaintext -> RVE2 envelope length.
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_pqr_encrypt(state: usize, pt: usize, pt_len: usize, out: usize, out_cap: usize) -> i32 {
+    code((|| {
+        let mut r = [0u8; pqr::ENCRYPT_RANDOM_LEN];
+        rout_random(r.as_mut_ptr(), r.len());
+        let res = pqr::encrypt(output(state, pqr::STATE_LEN), &r, input(pt, pt_len), output(out, out_cap));
+        wipe::bytes(&mut r);
+        Ok(res? as i32)
+    })())
+}
+
+/// state (in/out, replaced only on success) | RVE2 envelope -> plaintext length.
+#[no_mangle]
+pub unsafe extern "C" fn rout_zk_pqr_decrypt(state: usize, env: usize, env_len: usize, out: usize, out_cap: usize) -> i32 {
+    code((|| {
+        let n = pqr::decrypt(output(state, pqr::STATE_LEN), input(env, env_len), output(out, out_cap))?;
+        Ok(n as i32)
     })())
 }
