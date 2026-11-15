@@ -119,7 +119,6 @@ function readCbor(b: Uint8Array, at: { i: number }, depth = 0): Cbor {
   else if (info === 26) { n = new DataView(b.buffer, b.byteOffset + at.i).getUint32(0, false); at.i += 4; }
   else throw new ZkpAnchorError("cose_malformed");
   if (at.i > b.byteLength) throw new ZkpAnchorError("cose_malformed");
-  info = 0;
   switch (major) {
     case 0: return n;
     case 1: return -1 - n;
