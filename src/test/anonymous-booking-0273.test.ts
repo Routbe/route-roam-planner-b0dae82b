@@ -147,7 +147,7 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
     const { pgcrypto } = await import("@electric-sql/pglite/contrib/pgcrypto");
     db = await PGlite.create({ extensions: { pgcrypto, btree_gist } });
     const dir = join(ROOT, "db");
-    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run" && s.file !== FILE).map((s) => s.file);
+    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run" && s.file < FILE).map((s) => s.file);
     expect(run.slice(-4)).toEqual(["0267_card_recovery_factor_tap.sql", "0270_opaque_password_pow.sql", "0271_fido_mds3_attestation.sql", "0272_dynamic_recovery_v4.sql"]);
     for (const file of run) await db.exec(`begin;\n${readFileSync(join(dir, file), "utf8")}\n;commit;`);
     HOST = await newUser();
@@ -156,8 +156,8 @@ describe("0273 anonymous booking engine on a replay of db/", () => {
   }, 300_000);
   afterAll(async () => db?.close());
 
-  it("0273 is released: in db/ (not db-pending/), CODE_SCHEMA_LEVEL is 0273, the rollback stays held back", () => {
-    expect(CODE_SCHEMA_LEVEL).toBe("0273");
+  it("0273 is released: in db/ (not db-pending/), CODE_SCHEMA_LEVEL is at least 0273, the rollback stays held back", () => {
+    expect(Number(CODE_SCHEMA_LEVEL)).toBeGreaterThanOrEqual(273);
     expect(readdirSync(join(ROOT, "db")).filter((f) => f.startsWith("0273"))).toEqual([FILE]);
     expect(existsSync(join(ROOT, "db-pending", FILE))).toBe(false);
     expect(existsSync(join(ROOT, "db-pending", "0273_anonymous_booking_engine_rollback.sql"))).toBe(true);

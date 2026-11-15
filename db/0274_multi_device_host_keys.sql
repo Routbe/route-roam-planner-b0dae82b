@@ -1,6 +1,6 @@
 -- 0274 — EXPAND: multi-device hosts for the anonymous booking engine (Stap 7g).
--- HELD in db-pending/ until the owner's explicit GO for this migration;
--- CODE_SCHEMA_LEVEL stays 0273. Rollback: 0274_multi_device_host_keys_rollback.sql.
+-- Moved into db/ after the owner's explicit GO of 2026-11-15 (CODE_SCHEMA_LEVEL
+-- 0274); the rollback stays in db-pending/0274_multi_device_host_keys_rollback.sql.
 --
 -- Owner decisions (2026-11-15): every device of a host runs its own,
 -- independent forward-secure key chain SK_t,dev, registered as an authorised
