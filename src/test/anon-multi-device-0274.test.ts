@@ -23,6 +23,7 @@ import { listMigrationFiles, planMigrations } from "../../scripts/migration-plan
 import { catalogJson, diffCatalogs, readCatalog, type Catalog } from "../../scripts/schema-catalog";
 import { migrationDefinerGuardSql, migrationDefinerViolations } from "../../scripts/security-definer-policy";
 import { contextStatements } from "@/lib/db-context";
+import { ENCLAVE_MERGE_TABLES_PENDING_0274 } from "@/lib/account-merge-rules";
 import { CODE_SCHEMA_LEVEL } from "@/lib/schema-version";
 import { HSK_ENVELOPE_BYTES, hostKeys, type EpochLink, type HostKeyAnchor } from "@/lib/crypto-enclave/forward-secure";
 import type { SignedRoot } from "@/lib/crypto-enclave/smt";
@@ -207,6 +208,11 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
     const fks = await db.query<{ d: string }>(`select c.confdeltype::text as d from pg_constraint c join pg_class r on r.oid = c.conrelid
        join pg_namespace n on n.oid = r.relnamespace where n.nspname = 'vault_enclave' and r.relname like 'anon\\_%' and c.contype = 'f'`);
     expect(fks.rows.filter((r) => r.d !== "r")).toEqual([]);
+  });
+
+  it("every new anon table of 0274 has a reviewed merge strategy", () => {
+    const tables = [...SQL.matchAll(/create table vault_enclave\.(anon_\w+)/g)].map((m) => m[1]!).sort();
+    expect(Object.keys(ENCLAVE_MERGE_TABLES_PENDING_0274).sort()).toEqual(tables);
   });
 
   it("the audit action check keeps every 0273 value and adds exactly the three device actions", async () => {

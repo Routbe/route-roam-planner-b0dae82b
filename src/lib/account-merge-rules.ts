@@ -249,7 +249,7 @@ export function mergeAttemptAllowed(failures: number | null): boolean {
  *   follows_chain       keyed by key/tree/pool id, carries no member id, moves
  *                       with its chain untouched (signed history stays as signed)
  */
-export type EnclaveMergeStrategy = "close_and_reassign" | "deleted_on_close" | "follows_chain";
+export type EnclaveMergeStrategy = "close_and_reassign" | "deleted_on_close" | "follows_chain" | "revoke_and_reassign";
 export const ENCLAVE_MERGE_TABLES: Readonly<Record<string, EnclaveMergeStrategy>> = {
   anon_host_keys: "close_and_reassign",
   anon_host_key_states: "deleted_on_close",
@@ -260,4 +260,15 @@ export const ENCLAVE_MERGE_TABLES: Readonly<Record<string, EnclaveMergeStrategy>
   anon_pseudonym_invalidations: "follows_chain",
   anon_capacity_pools: "follows_chain",
   anon_ledger_events: "follows_chain",
+};
+
+/**
+ * Tables of db-pending/0274 (multi-device hosts, held until the owner's GO);
+ * merged into ENCLAVE_MERGE_TABLES when 0274 moves into db/.
+ *   revoke_and_reassign  the secondary's devices are revoked and move to the
+ *                        primary (their chains are retired by the chain step)
+ */
+export const ENCLAVE_MERGE_TABLES_PENDING_0274: Readonly<Record<string, EnclaveMergeStrategy>> = {
+  anon_host_devices: "revoke_and_reassign",
+  anon_anchor_endorsements: "follows_chain",
 };
