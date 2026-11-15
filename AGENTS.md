@@ -105,3 +105,8 @@ use the editor.
 
 ## Booking phases B–G
 - Phase B–G security rules live in src/lib/booking-engine/AGENTS.md and bind every booking, recovery and crypto change. Why: the owner's hard requirements stay in one scoped place.
+
+<!-- AGENT-MEMORY:BEGIN -->
+## One-file migration rollout
+- A GO for a single migration is applied from chat with scripts/migration-rollout.ts: the exact db/ file text travels as one parameter, runs only if its SHA-256 equals the file checksum and its predecessor is recorded, and is recorded with the definer guard in the same transaction (dry run: src/test/migration-rollout.test.ts). Why: the Neon connection stays unlinked, so migrate-gateway.ts cannot run, and a retyped or hand-split file must never diverge from db/.
+<!-- AGENT-MEMORY:END -->

@@ -158,17 +158,17 @@
   - [x] 0271 live op Neon (GO eigenaar 2026-11-14)
   - [ ] Android Key: KeyDescription-niveaus en RootOfTrust parsen (telt nu nooit als geattesteerd)
   - [ ] Eerste echte registratie met een beveiligingssleutel na deploy (vereist ROUT_VAULT_KEK)
-- [ ] Stap 7: anonieme boekingsmotor (besluiten eigenaar 2026-11-14: pseudoniem per boeking, eigen allocatorvrije Rust-Wasm op zkcrypto bls12_381)
+- [x] Stap 7: anonieme boekingsmotor — kern 7a–7f af, 0273 live op Neon (GO eigenaar 2026-11-15); open punten hieronder zijn nazorg en 7g (besluiten eigenaar 2026-11-14: pseudoniem per boeking, eigen allocatorvrije Rust-Wasm op zkcrypto bls12_381)
   - [x] 7a: wasm/rout-zk (no_std, geen allocator, geen memory.grow, vaste geïmporteerde memory, volatile wissen, subgroepcontrole G1/G2, `subtle`)
   - [x] 7a: BBS (KeyGen/Sign/Verify/ProofGen/ProofVerify) + Blind BBS (Commit/BlindSign/VerifyBlindSign/BlindProofGen/BlindProofVerify met COMMIT-onthulling); alle 49 officiële fixtures byte-gelijk (cargo test)
   - [x] build.sh + SHA-384-pin + loader voor rout-zk: officiële rustup 1.95.0 (LLVM 22.1.2), 2× uit verse mappen gelijk, pin a4a02c5f…540c, CI-job rout-zk in wasm-reproducible.yml (7f)
   - [ ] Timingmeting (dudect) van de gegenereerde Wasm
   - [x] 7d: forward-secure hostsleutels — HKDF-SHA256-ratchet per epoch (SK_0 uit vers random seed), oude staat in place gewist, ondertekende epoch-links vanaf anker PK_0, credentials (ook blind) gebonden aan sleutel-id + epoch; worker-ops host_key.init / advance_epoch / sign_credential / chain / verify_epoch_credential
-  - [x] 7d vervolg: besluit bewaren SK_t (eigenaar 2026-11-14): alleen de actuele staat, als RVE1-envelop (kind 9 hsk) onder de Master KEK in vault_enclave; tabel staat in db-pending/0273
+  - [x] 7d vervolg: besluit bewaren SK_t (eigenaar 2026-11-14): alleen de actuele staat, als RVE1-envelop (kind 9 hsk) onder de Master KEK in vault_enclave; tabel staat in db/0273
   - [x] 7f: SK_t onder de Host Device Key — hsk (kind 9, holder member_device) in pqc-envelope.ts, verzegeld/geopend alleen in de worker (host_key.init/advance geven sealedState, host_key.restore controleert tegen de publieke keten + high-water mark); 0273 eist holder 2, 1703 bytes
-  - [x] 7d vervolg: PK_0 gebonden aan het hostrecord bij init (anon_host_keys, db-pending/0273), handtekening + ondertekenaar opgeslagen; keten publiek leesbaar via anon_host_chain
+  - [x] 7d vervolg: PK_0 gebonden aan het hostrecord bij init (anon_host_keys, db/0273), handtekening + ondertekenaar opgeslagen; keten publiek leesbaar via anon_host_chain
   - [x] 7f: ankerhandtekening = BBS van een device-seed-sleutel over [sleutel-id, PK_0, boom-id] (host_key.sign_anchor / verify_anchor)
-  - [ ] Besluit: hoe een gast het sleutel-id van een host vindt, en de duur van één epoch
+  - [x] Besluit (eigenaar 2026-11-15): PK_0 op het publieke hostprofiel (`/@host/zkp-anchor.json`), ondertekend met de MDS3-geattesteerde hardwaresleutel van de host; epoch = 24 uur, overgang om 00:00 UTC
   - [x] 7b: Pedersen-commitments (homomorf optellen/aftrekken) + Bulletproofs-range-proofs v ∈ [0, 2^64−1] in rout-zk; worker-ops pedersen.commit / bulletproofs.prove_range / bulletproofs.verify_range
   - [x] 7f: a ≤ t ≤ b — slot als RAW-bericht in het credential, bij aankomst COMMIT-onthulling + twee range proofs (generatoren Y_1, Y_0) gebonden aan challenge/venster/C; capaciteitspools (C_rem,i = C_rem,i−1 − C_take,i, bewijs take ≥ 1 en rest ≥ 0) in rout-zk ABI 5 + 0273
   - [ ] Externe audit van de eigen BBS-, Bulletproofs-, Poseidon- en SMT-code (regel 'audited libraries' in booking-engine/AGENTS.md)
@@ -180,13 +180,19 @@
   - [x] 7f: eigen anonieme ledger (anon_ledger_events, hash-keten per boom, client-verifier anon-ledger.ts byte-gelijk aan SQL); 0265 ongemoeid
   - [x] 7f: end-to-end test (worker + 0273 op PGlite): twee anonieme gasten, dubbel uitgeven geweigerd, derde plaats onmogelijk, herladen via verzegelde staat
   - [ ] Gast-credential bewaren tussen boeking en aankomst (nu alleen in het werkgeheugen van de worker)
-  - [ ] Besluit: waar het master_seed van de gast vandaan komt (7f: nu een vers seed per boeking in de worker)
+  - [x] Besluit (eigenaar 2026-11-15): master_seed van de gast uit de WebAuthn-`prf`-extensie (zonder PRF: HKDF over de assertion-handtekening); lopende bewijzen en SK_guest in IndexedDB `vault_guest_storage`, versleuteld onder die lokale sleutel
   - [x] 7e: db-pending/0273 + idempotente rollback (deny_all, definers, 7 audit-acties) + PGlite-test (replay → 0273 → rollback → 0273, schema-vingerafdruk gelijk, fast-check-model + 2×70 interleavings)
   - [x] Volledige suite + typecheck
   - [x] 7f: account purge (rout_anon_booking_purge, alleen als de verwijdering vervallen is) en merge (rout_anon_booking_merge in execute_account_merge); alle anon-FK's ON DELETE RESTRICT; ENCLAVE_MERGE_TABLES
-  - [ ] Vóór 0273 naar db/: schema-snapshot bijwerken
-  - [ ] Meerdere toestellen van één host: hsk en poolblindingen hangen aan één device-seed
-  - [ ] 0273 op Neon — wacht op handmatige GO eigenaar
+  - [x] 0273 naar db/, CODE_SCHEMA_LEVEL 0273, schema-snapshot uit de replay (geen rijtypes voor vault_enclave), alle tests en dry-run van het uitrolscript groen
+  - [x] Besluit (eigenaar 2026-11-15): elk hosttoestel een eigen keten SK_t,dev, geregistreerd als toegestaan toestel onder de Host Root Identity
+  - [x] 0273 live op Neon (GO eigenaar 2026-11-15, 07:39 UTC) via scripts/migration-rollout.ts: één transactie, checksum c0d26bd1…b458 in de transactie gecontroleerd, alle vingerafdrukken gelijk aan de replay
+  - [ ] Productie meldt 0273 pas na een deploy naar Vercel (health meldt nu 0272)
+- [ ] Stap 7g: besluiten eigenaar 2026-11-15 uitvoeren
+  - [ ] Gast: seed uit WebAuthn PRF (fallback HKDF over de assertion-handtekening) in de worker; bewijzen + SK_guest versleuteld in IndexedDB `vault_guest_storage`
+  - [ ] Host: `zkp-anchor.json` op het publieke profiel, ondertekend via een WebAuthn-assertion van een MDS3-geattesteerde passkey (0271-oordeel)
+  - [ ] Epoch-klok: 24 uur, overgang 00:00 UTC (advance bij eerste gebruik na middernacht, inhaalsprong ≤ MAX_EPOCH_ADVANCE)
+  - [ ] Meerdere toestellen: device-register onder de Host Root Identity + per-toestel ketens; vraagt migratie 0274 (0273 staat één actieve keten per host toe) — wacht op ontwerp en GO
 - [ ] Stap 8: hybride PQ-ratchet + RVE2
 - [ ] Stap 9: RLS non-interference-model (Z3/Lean) vergeleken met de snapshot in CI
 - [x] /secure/*-documenten met COOP/COEP (wachtwoordpagina's)

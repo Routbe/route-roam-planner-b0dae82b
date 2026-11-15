@@ -48,7 +48,7 @@ export const MAX_CREDENTIAL_MESSAGE_BYTES = 1024;
 export const PROVER_BLIND_BYTES = 32;
 /** hsk plaintext: SK_t (32) || I2OSP(epoch, 8). */
 export const HSK_PLAINTEXT_BYTES = HOST_STATE_BYTES + 8;
-/** RVE1 overhead (pqc-envelope ENVELOPE_MIN_BYTES = 1663) + the plaintext; db-pending/0273 anon_is_hsk. */
+/** RVE1 overhead (pqc-envelope ENVELOPE_MIN_BYTES = 1663) + the plaintext; db/0273 anon_is_hsk. */
 export const HSK_ENVELOPE_BYTES = 1663 + HSK_PLAINTEXT_BYTES;
 
 /** Context of a host-state envelope: one member, one chain. */

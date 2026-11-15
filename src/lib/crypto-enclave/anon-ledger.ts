@@ -1,5 +1,5 @@
 /**
- * Client-side check of the anonymous booking ledger (db-pending/0273
+ * Client-side check of the anonymous booking ledger (db/0273
  * anon_ledger_events, Stap 7f). The database writes one hash chain per
  * nullifier tree; this module recomputes every hash with the same encoding as
  * vault_enclave.anon_ledger_hash and checks order and structure, so a host
