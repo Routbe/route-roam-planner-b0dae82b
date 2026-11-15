@@ -188,7 +188,12 @@
   - [x] Besluit (eigenaar 2026-11-15): elk hosttoestel een eigen keten SK_t,dev, geregistreerd als toegestaan toestel onder de Host Root Identity
   - [x] 0273 live op Neon (GO eigenaar 2026-11-15, 07:39 UTC) via scripts/migration-rollout.ts: één transactie, checksum c0d26bd1…b458 in de transactie gecontroleerd, alle vingerafdrukken gelijk aan de replay
   - [ ] Productie meldt 0273 pas na een deploy naar Vercel (health meldt nu 0272)
-- [ ] Stap 7g: besluiten eigenaar 2026-11-15 uitvoeren
+- [ ] Stap 7g: besluiten eigenaar 2026-11-15 uitvoeren (GO eigenaar 2026-11-15 08:50: 7g + ontwerp 0274, 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
+  - [ ] guest-vault.ts: PRF-seed (+ HKDF-fallback), AES-256-GCM in IndexedDB vault_guest_storage, niets onversleuteld
+  - [ ] /@host/zkp-anchor.json: PK_0 per toestel, ondertekend door MDS3-geattesteerde passkey
+  - [ ] Dagelijkse ratchet 00:00 UTC: oude SK gewist in de Wasm-arena, vault_enclave-rij bijgewerkt
+  - [ ] db-pending/0274 multi-device + rollback + PGlite 0267→0273→0274→rollback→0274
+  - [ ] Tests, volledige suite, tsgo, HANDOVER-bijlage
   - [ ] Gast: seed uit WebAuthn PRF (fallback HKDF over de assertion-handtekening) in de worker; bewijzen + SK_guest versleuteld in IndexedDB `vault_guest_storage`
   - [ ] Host: `zkp-anchor.json` op het publieke profiel, ondertekend via een WebAuthn-assertion van een MDS3-geattesteerde passkey (0271-oordeel)
   - [ ] Epoch-klok: 24 uur, overgang 00:00 UTC (advance bij eerste gebruik na middernacht, inhaalsprong ≤ MAX_EPOCH_ADVANCE)
