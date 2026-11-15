@@ -33,7 +33,7 @@ describe("one-file rollout batch (0273)", () => {
     }
   };
   const anonTables = async () =>
-    (await db.query<{ n: number }>("select count(*)::int as n from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'vault_enclave' and c.relname like 'anon%'")).rows[0]!.n;
+    (await db.query<{ n: number }>("select count(*)::int as n from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'vault_enclave' and c.relkind = 'r' and c.relname like 'anon%'")).rows[0]!.n;
   const recorded = async () => (await db.query<{ checksum: string }>("select checksum from public.schema_migrations where filename = $1", [FILE])).rows;
 
   beforeAll(async () => {
