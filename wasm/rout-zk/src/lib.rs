@@ -6,7 +6,8 @@
 //! BLS12-381 scalar field and a 256-deep Sparse Merkle Tree of nullifiers
 //! with enclave-signed roots (`poseidon`, `smt`). Part 7d: forward-secure
 //! host keys, an HKDF-SHA256 ratchet per epoch with signed epoch links and
-//! epoch-bound credentials (`forward_secure`).
+//! epoch-bound credentials (`forward_secure`). Stap 8: hybrid post-quantum
+//! double ratchet, ML-KEM-1024 + X25519 with RVE2 envelopes (`pq_ratchet`).
 //!
 //! Specifications followed (editor's copies, see tests/fixtures/SOURCE.md):
 //!   * draft-irtf-cfrg-bbs-signatures (core BBS: KeyGen, SkToPk, Sign, Verify,
@@ -42,6 +43,7 @@ pub mod limits;
 pub mod pedersen;
 pub mod poseidon;
 pub mod poseidon_constants;
+pub mod pq_ratchet;
 pub mod pseudonym;
 pub mod random;
 pub mod smt;
