@@ -10,13 +10,14 @@ do $$
 declare
   v_has boolean;
 begin
-  if pg_catalog.to_regclass('vault_enclave.anon_host_devices') is not null
-     and exists (select 1 from vault_enclave.anon_host_devices) then
-    raise exception '0274 rollback: vault_enclave.anon_host_devices is not empty';
+  -- Dynamic SQL: on a database without 0274 these tables do not exist (idempotent rerun).
+  if pg_catalog.to_regclass('vault_enclave.anon_host_devices') is not null then
+    execute 'select exists (select 1 from vault_enclave.anon_host_devices)' into v_has;
+    if v_has then raise exception '0274 rollback: vault_enclave.anon_host_devices is not empty'; end if;
   end if;
-  if pg_catalog.to_regclass('vault_enclave.anon_anchor_endorsements') is not null
-     and exists (select 1 from vault_enclave.anon_anchor_endorsements) then
-    raise exception '0274 rollback: vault_enclave.anon_anchor_endorsements is not empty';
+  if pg_catalog.to_regclass('vault_enclave.anon_anchor_endorsements') is not null then
+    execute 'select exists (select 1 from vault_enclave.anon_anchor_endorsements)' into v_has;
+    if v_has then raise exception '0274 rollback: vault_enclave.anon_anchor_endorsements is not empty'; end if;
   end if;
   if exists (select 1 from pg_catalog.pg_attribute a where a.attrelid = pg_catalog.to_regclass('vault_enclave.anon_host_keys')
                and a.attname = 'device_id' and not a.attisdropped) then
