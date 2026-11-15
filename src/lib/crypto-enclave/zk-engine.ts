@@ -68,13 +68,19 @@ export type ZkExports = {
   rout_zk_capacity_verify_open(c: number, pool: number, poolLen: number, proof: number): number;
   rout_zk_capacity_take(km: number, pool: number, poolLen: number, step: bigint, before: bigint, take: bigint, outTake: number, outRem: number, outProofs: number): number;
   rout_zk_capacity_verify_take(before: number, take: number, after: number, pool: number, poolLen: number, step: bigint, proofs: number): number;
+  rout_zk_pqr_state_len(): number;
+  rout_zk_pqr_responder_init(ctx: number, ctxLen: number, outState: number, outBundle: number): number;
+  rout_zk_pqr_initiator_init(ctx: number, ctxLen: number, bundle: number, bundleLen: number, outState: number): number;
+  rout_zk_pqr_encrypt(state: number, pt: number, ptLen: number, out: number, outCap: number): number;
+  rout_zk_pqr_decrypt(state: number, env: number, envLen: number, out: number, outCap: number): number;
 };
 
 /**
  * ABI 5 = BBS / Blind BBS / pseudonym (7a) + Pedersen and range proofs (7b) + Poseidon SMT with signed roots (7c)
- * + forward-secure host keys (7d) + slot credentials, anonymous window presentations and capacity pools (7f).
+ * + forward-secure host keys (7d) + slot credentials, anonymous window presentations and capacity pools (7f);
+ * ABI 6 adds the hybrid ML-KEM-1024 + X25519 double ratchet with RVE2 envelopes (Stap 8).
  */
-export const ZK_ENGINE_ABI = 5;
+export const ZK_ENGINE_ABI = 6;
 /** Linked as --initial-memory = --max-memory = 2 MiB (1 MiB stack first). */
 export const ZK_ENGINE_PAGES = 32;
 const PAGE = 65_536;

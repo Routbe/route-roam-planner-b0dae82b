@@ -51,7 +51,7 @@ describe("0271 passkey attestation on a replay of db/", () => {
     db = await PGlite.create({ extensions: { pgcrypto, btree_gist } });
     const dir = join(ROOT, "db");
     for (const step of planMigrations(listMigrationFiles(dir), new Set())) {
-      if (step.action === "run" && step.file !== FILE_0271) await db.exec(`begin;\n${readFileSync(join(dir, step.file), "utf8")}\n;commit;`);
+      if (step.action === "run" && step.file < FILE_0271) await db.exec(`begin;\n${readFileSync(join(dir, step.file), "utf8")}\n;commit;`);
     }
     await db.query(`insert into neon_auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt") values ($1,'m','m@example.test',true,now(),now()), ($2,'o','o@example.test',true,now(),now())`, [AUTH, OTHER]);
     await db.query("insert into public.users (id, email, auth_user_id) values ($1, 'm@example.test', $2)", [MEMBER, AUTH]);

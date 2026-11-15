@@ -1,6 +1,6 @@
 /**
  * Server side of host key chains (Stap 7g): one call per vault_enclave entry
- * point of db/0273 (per chain) and db-pending/0274 (per device). The caller is
+ * point of db/0273 (per chain) and db/0274 (per device). The caller is
  * always the signed-in member; the database takes it from the transaction
  * context. Nothing here holds or opens a key: SK_t exists only in the host's
  * crypto worker and reaches the database only as its RVE1 hsk envelope.
@@ -8,7 +8,7 @@
  * registerDevice verifies the host passkey's assertion over the anchor
  * statement (zkp-anchor.ts) against the caller's own stored passkey key
  * before the database re-checks ownership, MDS3 verdict, challenge and flags.
- * Device calls need 0274; until the owner's GO they answer `unavailable`.
+ * Device calls need 0274; on a database without it they answer `unavailable`.
  */
 import type { VaultSqlExecutor } from "@/lib/vault/vault-port.server";
 import type { EpochLink } from "@/lib/crypto-enclave/forward-secure";
@@ -45,7 +45,7 @@ const unavailable = (op: string): AnonAnswer => ({ op, ok: false, why: "unavaila
 export class AnonHostChainStore {
   constructor(private readonly exec: VaultSqlExecutor, private readonly rp: EndorsementCheck) {}
 
-  /** Whether db-pending/0274 is applied (runtime detection; code may deploy first). */
+  /** Whether db/0274 is applied (runtime detection; code may deploy first). */
   async devicesAvailable(userId: string): Promise<boolean> {
     const rows = await this.exec(userId, "select pg_catalog.to_regprocedure('vault_enclave.anon_host_devices_mine()') is not null as ok", []);
     return rows[0]?.["ok"] === true;

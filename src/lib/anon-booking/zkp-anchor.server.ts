@@ -1,6 +1,6 @@
 /**
  * Public anchor document behind /@host/zkp-anchor.json (Stap 7g). Reads
- * vault_enclave.anon_host_anchor_public (db-pending/0274) without a session:
+ * vault_enclave.anon_host_anchor_public (db/0274) without a session:
  * only public keys, signatures, the host passkey's assertion and MDS3 flags.
  * Until 0274 is applied the document does not exist (status "unavailable").
  */

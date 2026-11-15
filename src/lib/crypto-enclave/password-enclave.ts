@@ -22,6 +22,7 @@ import { wipeZkEngineMemory } from "./zk-engine";
 import { guestBookings } from "./anon-booking";
 import { guestVault } from "./guest-vault";
 import { epochChains, hostKeys } from "./forward-secure";
+import { pqSessions } from "./pq-ratchet";
 import { wipe } from "@/lib/crypto/wipe";
 import { fail } from "./enclave-failure";
 import { searchPow, isPowBits } from "./hashcash";
@@ -241,6 +242,7 @@ export function wipeAllPasswordState(): number {
   n += wipeZkEngineMemory();
   n += hostKeys.wipeAll();
   n += guestBookings.wipeAll();
+  n += pqSessions.wipeAll();
   if (guestVault.lock()) n++;
   epochChains.clear();
   return n;

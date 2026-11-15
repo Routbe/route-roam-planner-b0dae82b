@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * db-pending/0274 (Stap 7g, multi-device host keys) and its rollback, on
+ * db/0274 (Stap 7g, multi-device host keys; released after the owner's GO) and its rollback, on
  * PGlite over a replay of db/ (… 0267 → 0270 → 0271 → 0272 → 0273), then
  * 0274 → rollback → 0274. HELD: 0274 stays in db-pending/ and
  * CODE_SCHEMA_LEVEL stays 0273 until the owner's GO. Nothing touches Neon.
@@ -23,7 +23,7 @@ import { listMigrationFiles, planMigrations } from "../../scripts/migration-plan
 import { catalogJson, diffCatalogs, readCatalog, type Catalog } from "../../scripts/schema-catalog";
 import { migrationDefinerGuardSql, migrationDefinerViolations } from "../../scripts/security-definer-policy";
 import { contextStatements } from "@/lib/db-context";
-import { ENCLAVE_MERGE_TABLES_PENDING_0274 } from "@/lib/account-merge-rules";
+import { ENCLAVE_MERGE_TABLES } from "@/lib/account-merge-rules";
 import { CODE_SCHEMA_LEVEL } from "@/lib/schema-version";
 import { HSK_ENVELOPE_BYTES, hostKeys, type EpochLink, type HostKeyAnchor } from "@/lib/crypto-enclave/forward-secure";
 import type { SignedRoot } from "@/lib/crypto-enclave/smt";
@@ -38,7 +38,7 @@ import { assertOver, makeAuthenticator, type TestAuthenticator } from "./webauth
 
 const ROOT = join(__dirname, "..", "..");
 const FILE = "0274_multi_device_host_keys.sql";
-const SQL = readFileSync(join(ROOT, "db-pending", FILE), "utf8");
+const SQL = readFileSync(join(ROOT, "db", FILE), "utf8");
 const ROLLBACK = readFileSync(join(ROOT, "db-pending", "0274_multi_device_host_keys_rollback.sql"), "utf8");
 const SQL_0273 = readFileSync(join(ROOT, "db", "0273_anonymous_booking_engine.sql"), "utf8");
 const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
@@ -158,7 +158,7 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
     const { pgcrypto } = await import("@electric-sql/pglite/contrib/pgcrypto");
     db = await PGlite.create({ extensions: { pgcrypto, btree_gist } });
     const dir = join(ROOT, "db");
-    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run").map((s) => s.file);
+    const run = planMigrations(listMigrationFiles(dir), new Set()).filter((s) => s.action === "run" && s.file < FILE).map((s) => s.file);
     expect(run.slice(-5)).toEqual(["0267_card_recovery_factor_tap.sql", "0270_opaque_password_pow.sql", "0271_fido_mds3_attestation.sql", "0272_dynamic_recovery_v4.sql", "0273_anonymous_booking_engine.sql"]);
     for (const file of run) await db.exec(`begin;\n${readFileSync(join(dir, file), "utf8")}\n;commit;`);
     at0273 = await fingerprint();
@@ -166,10 +166,10 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
   }, 300_000);
   afterAll(async () => db?.close());
 
-  it("0274 is held: only in db-pending/ with its rollback, CODE_SCHEMA_LEVEL stays 0273", () => {
-    expect(CODE_SCHEMA_LEVEL).toBe("0273");
-    expect(readdirSync(join(ROOT, "db")).filter((f) => f.startsWith("0274"))).toEqual([]);
-    expect(existsSync(join(ROOT, "db-pending", FILE))).toBe(true);
+  it("0274 is released: in db/ (not db-pending/), CODE_SCHEMA_LEVEL is 0274, the rollback stays held back", () => {
+    expect(CODE_SCHEMA_LEVEL).toBe("0274");
+    expect(readdirSync(join(ROOT, "db")).filter((f) => f.startsWith("0274"))).toEqual([FILE]);
+    expect(existsSync(join(ROOT, "db-pending", FILE))).toBe(false);
     expect(existsSync(join(ROOT, "db-pending", "0274_multi_device_host_keys_rollback.sql"))).toBe(true);
   });
 
@@ -212,7 +212,7 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
 
   it("every new anon table of 0274 has a reviewed merge strategy", () => {
     const tables = [...SQL.matchAll(/create table vault_enclave\.(anon_\w+)/g)].map((m) => m[1]!).sort();
-    expect(Object.keys(ENCLAVE_MERGE_TABLES_PENDING_0274).sort()).toEqual(tables);
+    for (const t of tables) expect(ENCLAVE_MERGE_TABLES[t], t).toBeDefined();
   });
 
   it("the audit action check keeps every 0273 value and adds exactly the three device actions", async () => {
