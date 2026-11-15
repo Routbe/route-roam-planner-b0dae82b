@@ -188,7 +188,7 @@
   - [x] Besluit (eigenaar 2026-11-15): elk hosttoestel een eigen keten SK_t,dev, geregistreerd als toegestaan toestel onder de Host Root Identity
   - [x] 0273 live op Neon (GO eigenaar 2026-11-15, 07:39 UTC) via scripts/migration-rollout.ts: één transactie, checksum c0d26bd1…b458 in de transactie gecontroleerd, alle vingerafdrukken gelijk aan de replay
   - [ ] Productie meldt 0273 pas na een deploy naar Vercel (health meldt nu 0272)
-- [x] Stap 7g: besluiten eigenaar 2026-11-15 gebouwd (GO eigenaar 2026-11-15 08:50; 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
+- [x] Stap 7g: besluiten eigenaar 2026-11-15 gebouwd (GO eigenaar 2026-11-15; 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
   - [x] guest-vault.ts: seed uit WebAuthn PRF (fallback HKDF over de handtekening, alleen als twee assertions byte-gelijk zijn), SK_guest + boekingen als AES-256-GCM in IndexedDB vault_guest_storage (emmers van 4096 bytes), worker-ops guest_vault.unlock/lock, herladen getest
   - [x] guest-passkey.ts: PRF-assertion en gast-passkey aanmaken in de browser (nog geen scherm)
   - [x] /@host/zkp-anchor.json: route + document per toestel (PK_0, links, passkey-assertion, MDS3-oordeel); verifier voor gasten (ES256/EdDSA/RS256); geeft 404 not_available tot 0274 live is
