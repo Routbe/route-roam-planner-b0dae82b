@@ -1,7 +1,8 @@
 /**
- * SHA-384 of the committed anonymous booking engine (wasm/rout-zk, ABI 5:
+ * SHA-384 of the committed anonymous booking engine (wasm/rout-zk, ABI 6:
  * BBS / Blind BBS, Pedersen + Bulletproofs, Poseidon SMT, forward-secure host
- * keys, slot credentials, window presentations and capacity pools)
+ * keys, slot credentials, window presentations and capacity pools, and the
+ * hybrid ML-KEM-1024 + X25519 double ratchet with RVE2 envelopes)
  * (src/lib/crypto-enclave/wasm/rout-zk.wasm, embedded in zk-wasm-bytes.ts),
  * built deterministically by wasm/rout-zk/build.sh with the official rustup
  * rustc 1.95.0 (commit 59807616e, LLVM 22.1.2) and Cargo.lock; two builds in
