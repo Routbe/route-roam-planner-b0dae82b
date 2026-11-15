@@ -100,7 +100,7 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
     const h = handle ?? `host${n}`;
     await db.query(`insert into neon_auth."user" (id, name, email, "emailVerified", "createdAt", "updatedAt") values ($1, 'h', $2, true, now(), now())`, [auth, `h${n}@example.test`]);
     await db.query("insert into public.users (id, email, auth_user_id) values ($1, $2, $3)", [member, `h${n}@example.test`, auth]);
-    await db.query("insert into public.profiles (id, username) values ($1, $2)", [member, h]);
+    await db.query("insert into public.profiles (id, username) values ($1, $2) on conflict (id) do update set username = excluded.username", [member, h]);
     return { id: member, auth, handle: h };
   };
   /** A passkey of `m` with the authenticator's COSE key and an MDS3 verdict (or none). */
