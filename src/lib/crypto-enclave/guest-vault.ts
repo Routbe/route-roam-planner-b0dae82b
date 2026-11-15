@@ -34,14 +34,12 @@ import { extract, expand } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { wipe } from "@/lib/crypto/wipe";
 import type { GuestSlotData } from "./anon-booking";
+import { GUEST_FALLBACK_CHALLENGE, GUEST_PRF_SALT, GUEST_VAULT_DB, GUEST_VAULT_STORE } from "./guest-vault-constants";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-export const GUEST_VAULT_DB = "vault_guest_storage";
-export const GUEST_VAULT_STORE = "records";
-export const GUEST_PRF_SALT: Uint8Array = sha256(enc.encode("rout.v1.guest-vault.prf-salt"));
-export const GUEST_FALLBACK_CHALLENGE: Uint8Array = sha256(enc.encode("rout.v1.guest-vault.fallback-challenge"));
+export { GUEST_FALLBACK_CHALLENGE, GUEST_PRF_SALT, GUEST_VAULT_DB, GUEST_VAULT_STORE };
 export const GUEST_SECRET_BYTES = 32;
 export const PRF_OUTPUT_BYTES = 32;
 export const MIN_SIGNATURE_BYTES = 64;
