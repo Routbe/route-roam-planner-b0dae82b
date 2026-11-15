@@ -174,7 +174,7 @@
   - [ ] Externe audit van de eigen BBS-, Bulletproofs-, Poseidon- en SMT-code (regel 'audited libraries' in booking-engine/AGENTS.md)
   - [x] 7c: Poseidon (referentie x5_255_3, constanten via Grain herberekend en gelijk) + 256-diepe nullifier-SMT met NonExist/Exist, hergebruik geweigerd; ondertekende root (BBS, eigen sleutel uit device-seed) per epoch; worker-ops smt.genesis / smt.insert_nullifier / smt.verify_non_membership / smt.verify_signed_root
   - [ ] 7c vervolg: blijvende bescherming tegen terugdraaien van een oude ondertekende root (nu alleen high-water mark in het werkgeheugen) via externe verankering
-  - [x] 7c vervolg: meerdere toestellen van één host — elk toestel eigen keten, boom en rootsleutel (0274, wacht op GO)
+  - [x] 7c vervolg: meerdere toestellen van één host — elk toestel eigen keten, boom en rootsleutel (0274, live op Neon)
   - [x] 7a: pseudonyms.ts + worker-op `pseudonym.derive` (HKDF-Expand + HMAC-SHA256, gedeelde vector met Rust)
   - [x] 7f: gast-adapters in de worker (anon_guest.begin/accept/present/discard, anon_host.verify_presentation, capacity.*), geheimen alleen in de worker
   - [x] 7f: eigen anonieme ledger (anon_ledger_events, hash-keten per boom, client-verifier anon-ledger.ts byte-gelijk aan SQL); 0265 ongemoeid
@@ -188,17 +188,25 @@
   - [x] Besluit (eigenaar 2026-11-15): elk hosttoestel een eigen keten SK_t,dev, geregistreerd als toegestaan toestel onder de Host Root Identity
   - [x] 0273 live op Neon (GO eigenaar 2026-11-15, 07:39 UTC) via scripts/migration-rollout.ts: één transactie, checksum c0d26bd1…b458 in de transactie gecontroleerd, alle vingerafdrukken gelijk aan de replay
   - [ ] Productie meldt 0273 pas na een deploy naar Vercel (health meldt nu 0272)
-- [x] Stap 7g: besluiten eigenaar 2026-11-15 gebouwd (GO eigenaar 2026-11-15; 0274 blijft in db-pending, CODE_SCHEMA_LEVEL blijft 0273)
+- [x] Stap 7g: besluiten eigenaar 2026-11-15 gebouwd (GO eigenaar 2026-11-15; goedgekeurd)
   - [x] guest-vault.ts: seed uit WebAuthn PRF (fallback HKDF over de handtekening, alleen als twee assertions byte-gelijk zijn), SK_guest + boekingen als AES-256-GCM in IndexedDB vault_guest_storage (emmers van 4096 bytes), worker-ops guest_vault.unlock/lock, herladen getest
   - [x] guest-passkey.ts: PRF-assertion en gast-passkey aanmaken in de browser (nog geen scherm)
   - [x] /@host/zkp-anchor.json: route + document per toestel (PK_0, links, passkey-assertion, MDS3-oordeel); verifier voor gasten (ES256/EdDSA/RS256); geeft 404 not_available tot 0274 live is
   - [x] Dagelijkse ratchet 00:00 UTC (epoch = UTC-dag): DailyEpochRatchet, inhaalsprong, single-flight, opnieuw versturen; Wasm-geheugen na de stap nul, oude SK in place overschreven, nieuwe envelop in de eigen vault_enclave-rij
-  - [x] db-pending/0274 + rollback: anon_host_devices, anon_anchor_endorsements, één live keten per toestel (max 16), register/revoke/list/passkey/publiek anker, purge en merge uitgebreid; PGlite 0267→0273→0274→rollback→0274 groen
+  - [x] 0274 + rollback: anon_host_devices, anon_anchor_endorsements, één live keten per toestel (max 16), register/revoke/list/passkey/publiek anker, purge en merge uitgebreid; PGlite 0267→0273→0274→rollback→0274 groen
   - [x] Volledige suite 3124 groen (9 overgeslagen), tsgo 0 fouten, HANDOVER-bijlage
-  - [ ] GO eigenaar voor 0274 op Neon (daarna naar db/, CODE_SCHEMA_LEVEL 0274, snapshot)
+  - [x] 0274 op Neon (GO eigenaar, 2026-11-15 08:35 UTC, migration-rollout.ts in één transactie; 7 vingerafdrukken gelijk aan de replay), naar db/, CODE_SCHEMA_LEVEL 0274, snapshot
+  - [ ] Productie meldt 0274 pas na de volgende deploy
   - [ ] Serverfuncties + schermen: host registreert toestel en start de ratchet; gast opent kluis en boekt (nu alleen bouwstenen + tests)
   - [ ] Keten vol na 1024 links (≈ 2,8 jaar dagelijks): oude keten intrekken en een nieuwe op hetzelfde toestel registreren (0274 laat dat toe), nog geen scherm
-- [ ] Stap 8: hybride PQ-ratchet + RVE2
+- [ ] Stap 8: hybride PQ-ratchet + RVE2 (GO eigenaar 2026-11-15; geen SQL)
+  - [x] wasm/rout-zk pq_ratchet.rs: ML-KEM-1024 + X25519 root-stap (HKDF, X-Wing-binding), HMAC-keten met volatile wipe, AES-256-GCM + HMAC in RVE2, out-of-order (max 64 per gat, 64 sleutels), atomisch (state alleen bij succes)
+  - [x] ABI 6, reproduceerbare build (officiële 1.95.0, 2x gelijk), nieuwe pin; 10 nieuwe Rust-tests (68 totaal)
+  - [x] Worker-ops pq_ratchet.init_session / ratchet_encrypt / ratchet_decrypt / close_session + client; secure.wipe wist sessies; worker-test
+  - [ ] Peer-authenticatie van de bundle (identiteitshandtekening) en waar bundles gepubliceerd worden — besluit eigenaar
+  - [ ] Sessies bewaren over herladen (nu alleen in het werkgeheugen; zou een nieuwe opslagvorm vragen) — besluit eigenaar
+  - [ ] Schermen/transport voor berichten en status-updates
+  - [ ] Externe audit + dudect voor de ratchet en de gebruikte RustCrypto-crates
 - [ ] Stap 9: RLS non-interference-model (Z3/Lean) vergeleken met de snapshot in CI
 - [x] /secure/*-documenten met COOP/COEP (wachtwoordpagina's)
 - [x] Wasm SRI (SHA-384) en reproduceerbare build van de wachtwoordmotor: officiële rustup 1.95.0 (LLVM 22.1.2) vastgezet, pin opnieuw gezet, CI .github/workflows/wasm-reproducible.yml (lokaal 2x uit twee mappen gelijk)
