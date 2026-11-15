@@ -212,6 +212,16 @@ export type EndorsementVerdict =
 
 /** Every check a guest can run on one device anchor without trusting ROUT. */
 export async function verifyAnchorEndorsement(a: AnchorStatementInput, e: AnchorEndorsement, check: EndorsementCheck): Promise<EndorsementVerdict> {
+  return verifyPasskeyAssertion(anchorChallenge(a), e, check);
+}
+
+/**
+ * One WebAuthn assertion over `challenge` (32 bytes, e.g. SHA-256 of a
+ * statement): clientDataJSON type/challenge/origin, RP id hash, UP+UV flags
+ * and the signature under the given COSE key. Shared by the ZKP anchor and
+ * the PQ prekey bundle (crypto-enclave/prekey-bundle.ts).
+ */
+export async function verifyPasskeyAssertion(challenge: Uint8Array, e: AnchorEndorsement, check: EndorsementCheck): Promise<EndorsementVerdict> {
   let key: CoseKey;
   try {
     key = parseCoseKey(e.publicKey);
@@ -228,7 +238,7 @@ export async function verifyAnchorEndorsement(a: AnchorStatementInput, e: Anchor
     return { ok: false, reason: "client_data" };
   }
   if (cd.type !== "webauthn.get") return { ok: false, reason: "type" };
-  if (cd.challenge !== b64u(anchorChallenge(a))) return { ok: false, reason: "challenge" };
+  if (!(challenge instanceof Uint8Array) || challenge.byteLength !== 32 || cd.challenge !== b64u(challenge)) return { ok: false, reason: "challenge" };
   if (typeof cd.origin !== "string" || !check.origins.includes(cd.origin) || cd.crossOrigin === true) return { ok: false, reason: "origin" };
   const ad = e.authenticatorData;
   if (!(ad instanceof Uint8Array) || ad.byteLength < 37) return { ok: false, reason: "rp_id" };
