@@ -127,7 +127,15 @@ describe("0274 multi-device host keys on a replay of db/ (held in db-pending/)",
   });
   const REGISTER = "select vault_enclave.anon_host_device_register($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) as a";
   const registerRaw = async (m: Member, r: Reg, o: { proof?: string | null; cred: string; auth: TestAuthenticator; flags?: number; challenge?: Uint8Array; alg?: number }) => {
-    const a = await assertOver(o.auth, o.challenge ?? anchorChallenge(r), { flags: o.flags });
+    let challenge = o.challenge;
+    if (!challenge) {
+      try {
+        challenge = anchorChallenge(r);
+      } catch {
+        challenge = randomBytes(32); // malformed ids: the database refuses before it looks at the assertion
+      }
+    }
+    const a = await assertOver(o.auth, challenge, { flags: o.flags });
     return call(m.id, REGISTER, [o.proof === undefined ? await proof(m) : o.proof, r.deviceId, r.keyId, r.anchorPublicKey, r.anchorSignerPublicKey, r.anchorSig,
       r.state, r.treeId, r.rootSignerPublicKey, r.genesisSig, o.cred, o.alg ?? o.auth.alg, a.authenticatorData, a.clientDataJSON, a.signature]);
   };

@@ -129,7 +129,7 @@ create table vault_enclave.anon_anchor_endorsements (
   status_safe boolean not null,
   certified_l3 boolean not null,
   created_at timestamptz not null default pg_catalog.clock_timestamp(),
-  constraint anon_anchor_endorsements_credential check (credential_id ~ '^[A-Za-z0-9_-]{16,1366}$'),
+  constraint anon_anchor_endorsements_credential check (credential_id ~ '^[A-Za-z0-9_-]+$' and length(credential_id) between 16 and 1366),
   constraint anon_anchor_endorsements_alg check (algorithm in (-7, -8, -257)),
   constraint anon_anchor_endorsements_len check (octet_length(public_key) between 32 and 1024
     and octet_length(authenticator_data) between 37 and 1024 and octet_length(client_data_json) between 32 and 4096
@@ -170,7 +170,7 @@ declare
   v_pk bytea;
   a vault_enclave.passkey_attestations%rowtype;
 begin
-  if v_caller is null or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]{16,1366}$' then
+  if v_caller is null or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]+$' or length(p_credential_id) not between 16 and 1366 then
     return pg_catalog.jsonb_build_object('found', false);
   end if;
   v_auth := vault_enclave.passkey_attestation_identity(v_caller);
@@ -221,7 +221,7 @@ begin
      or not vault_enclave.anon_len(p_anchor_pk, 96) or not vault_enclave.anon_len(p_anchor_signer_pk, 96)
      or not vault_enclave.anon_len(p_anchor_sig, 80) or not vault_enclave.anon_len(p_root_signer_pk, 96)
      or not vault_enclave.anon_len(p_genesis_sig, 80) or not vault_enclave.anon_is_hsk(p_state)
-     or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]{16,1366}$'
+     or p_credential_id is null or p_credential_id !~ '^[A-Za-z0-9_-]+$' or length(p_credential_id) not between 16 and 1366
      or p_algorithm is null or p_algorithm not in (-7, -8, -257)
      or p_authenticator_data is null or octet_length(p_authenticator_data) not between 37 and 1024
      or p_client_data_json is null or octet_length(p_client_data_json) not between 32 and 4096
