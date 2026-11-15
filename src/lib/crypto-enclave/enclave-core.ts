@@ -204,7 +204,7 @@ async function persistGuestBooking(handle: string): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    data.credential && wipe(data.credential.signature, ...data.credential.messages);
+    if (data.credential) wipe(data.credential.signature, ...data.credential.messages);
     wipe(data.nullifier, data.bookingNonce, data.seed, data.proverBlind, data.pseudonym);
   }
 }

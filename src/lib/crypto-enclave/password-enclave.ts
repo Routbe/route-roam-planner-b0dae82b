@@ -20,6 +20,7 @@
  */
 import { wipeZkEngineMemory } from "./zk-engine";
 import { guestBookings } from "./anon-booking";
+import { guestVault } from "./guest-vault";
 import { epochChains, hostKeys } from "./forward-secure";
 import { wipe } from "@/lib/crypto/wipe";
 import { fail } from "./enclave-failure";
