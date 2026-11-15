@@ -15,11 +15,11 @@ describe("committed rout-zk engine", () => {
     expect(Buffer.from(ROUT_ZK_WASM_BASE64!, "base64").equals(file)).toBe(true);
   });
 
-  it("compiles, has ABI 5, imports only fixed memory and the CSPRNG, and has no memory.grow", async () => {
+  it("compiles, has ABI 6, imports only fixed memory and the CSPRNG, and has no memory.grow", async () => {
     const module = await zkEngineModule();
     expect(WebAssembly.Module.imports(module).map((i) => `${i.module}.${i.name}:${i.kind}`).sort()).toEqual(["env.memory:memory", "env.rout_random:function"]);
-    expect(ZK_ENGINE_ABI).toBe(5);
-    expect(await withZkFrame((f) => f.ex.rout_zk_abi_version())).toBe(5);
+    expect(ZK_ENGINE_ABI).toBe(6);
+    expect(await withZkFrame((f) => f.ex.rout_zk_abi_version())).toBe(6);
     expect(WebAssembly.Module.exports(module).some((e) => e.kind === "memory")).toBe(false);
     const wabt = await (await import("wabt")).default();
     const text = wabt.readWasm(readFileSync(join(__dirname, "wasm", "rout-zk.wasm")), { readDebugNames: false }).toText({});
