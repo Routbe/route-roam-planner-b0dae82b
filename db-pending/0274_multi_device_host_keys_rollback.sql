@@ -7,6 +7,8 @@
 -- its single-chain-per-host index and its audit action check.
 
 do $$
+declare
+  v_has boolean;
 begin
   if pg_catalog.to_regclass('vault_enclave.anon_host_devices') is not null
      and exists (select 1 from vault_enclave.anon_host_devices) then
@@ -16,10 +18,10 @@ begin
      and exists (select 1 from vault_enclave.anon_anchor_endorsements) then
     raise exception '0274 rollback: vault_enclave.anon_anchor_endorsements is not empty';
   end if;
-  if exists (select 1 from pg_catalog.pg_attribute a where a.attrelid = 'vault_enclave.anon_host_keys'::regclass
+  if exists (select 1 from pg_catalog.pg_attribute a where a.attrelid = pg_catalog.to_regclass('vault_enclave.anon_host_keys')
                and a.attname = 'device_id' and not a.attisdropped) then
-    execute 'select 1 from vault_enclave.anon_host_keys where device_id is not null limit 1';
-    if found then raise exception '0274 rollback: a chain still belongs to a device'; end if;
+    execute 'select exists (select 1 from vault_enclave.anon_host_keys where device_id is not null)' into v_has;
+    if v_has then raise exception '0274 rollback: a chain still belongs to a device'; end if;
   end if;
   if exists (select 1 from vault_enclave.audit_logs
               where action in ('anon_device_register', 'anon_device_revoke', 'anon_device_list')) then
