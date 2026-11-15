@@ -13,7 +13,8 @@
  *   bun scripts/migration-rollout.ts <file> --after=<previous file> [--out=<json>]
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { checksumOf, listMigrationFiles } from "./migration-plan";
 import { guardedMigration, migrationDefinerGuardSql, migrationDefinerViolations } from "./security-definer-policy";
 
@@ -58,7 +59,7 @@ if (import.meta.main) {
   const file = process.argv[2];
   const after = process.argv.find((a) => a.startsWith("--after="))?.slice(8);
   const out = process.argv.find((a) => a.startsWith("--out="))?.slice(6);
-  const dir = join(import.meta.dir, "..", "db");
+  const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "db");
   if (!file || !after) throw new Error("usage: bun scripts/migration-rollout.ts <file> --after=<previous file> [--out=<json>]");
   const files = listMigrationFiles(dir);
   const at = files.indexOf(file);

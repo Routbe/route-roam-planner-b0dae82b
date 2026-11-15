@@ -23,7 +23,7 @@ describe("one-file rollout batch (0273)", () => {
   const batch = async (queries: RolloutQuery[]) => {
     await db.exec("begin");
     try {
-      const out = [];
+      const out: Record<string, unknown>[][] = [];
       for (const q of queries) out.push((await db.query<Record<string, unknown>>(q.query, q.params)).rows);
       await db.exec("commit");
       return out;
