@@ -323,7 +323,7 @@ export async function capacityVerifyTake(before: Uint8Array, take: Uint8Array, a
 // ---- Guest state (worker only) --------------------------------------------------
 
 export type GuestCredential = { keyId: string; epoch: number; slot: bigint; messages: Uint8Array[]; signature: Uint8Array; publicKey: Uint8Array };
-type GuestSlot = {
+export type GuestSlotData = {
   hostId: string;
   keyId: string;
   nullifier: Uint8Array;
@@ -334,6 +334,7 @@ type GuestSlot = {
   credential: GuestCredential | null;
   expiresAt: number;
 };
+type GuestSlot = GuestSlotData;
 
 /** One booking a guest is making, from commitment to presentation. 30 days, then wiped. */
 export const GUEST_SLOT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -342,8 +343,10 @@ export const MAX_GUEST_SLOTS = 64;
 /**
  * Guest secrets per handle, only in this worker: the nullifier, booking nonce,
  * per-booking seed and prover blind never leave it. discard() and wipeAll()
- * zero-fill them. Persisting a credential across reloads (and where the
- * guest's seed comes from) is an open owner decision (docs/HANDOVER.md, 7f).
+ * zero-fill them. Across reloads a booking exists only as an AES-256-GCM
+ * record of the guest vault (guest-vault.ts, Stap 7g); with the vault open
+ * the pseudonym seed is the guest's SK_guest (from the passkey PRF), else a
+ * fresh random seed per booking.
  */
 export class GuestBookingStore {
   private slots = new Map<string, GuestSlot>();
@@ -352,14 +355,16 @@ export class GuestBookingStore {
     for (const [h, s] of this.slots) if (s.expiresAt <= now) this.discard(h);
   }
 
-  async begin(handle: string, hostId: string, keyId: string, now = Date.now()): Promise<{ commitmentWithProof: Uint8Array; pseudonym: Uint8Array }> {
+  /** `guestSeed` (SK_guest of an open guest vault) is copied, never kept; the caller wipes its own. */
+  async begin(handle: string, hostId: string, keyId: string, now = Date.now(), guestSeed?: Uint8Array): Promise<{ commitmentWithProof: Uint8Array; pseudonym: Uint8Array }> {
     hostKeyIdBytes(keyId);
     if (typeof hostId !== "string" || hostId.length === 0 || enc.encode(hostId).byteLength > 256) throw new ZkEngineError("zk_invalid_input");
+    if (guestSeed !== undefined && (!(guestSeed instanceof Uint8Array) || guestSeed.byteLength !== GUEST_SEED_BYTES)) throw new ZkEngineError("zk_invalid_input");
     this.sweep(now);
     if (this.slots.size >= MAX_GUEST_SLOTS || this.slots.has(handle)) throw new ZkEngineError("zk_invalid_input");
     const nullifier = crypto.getRandomValues(new Uint8Array(NULLIFIER_BYTES));
     const bookingNonce = crypto.getRandomValues(new Uint8Array(BOOKING_NONCE_BYTES));
-    const seed = crypto.getRandomValues(new Uint8Array(GUEST_SEED_BYTES));
+    const seed = guestSeed ? guestSeed.slice() : crypto.getRandomValues(new Uint8Array(GUEST_SEED_BYTES));
     let proverBlind: Uint8Array | null = null;
     try {
       const pseudonym = derivePseudonym(seed, hostId, bookingNonce);
@@ -385,6 +390,31 @@ export class GuestBookingStore {
     if (!s || s.credential || c.keyId !== s.keyId) throw new ZkEngineError("zk_invalid_input");
     for (const m of c.messages) if (m.byteLength > MAX_CREDENTIAL_MESSAGE_BYTES) throw new ZkEngineError("zk_invalid_input");
     s.credential = { keyId: c.keyId, epoch: c.epoch, slot: c.slot, messages: c.messages.map((m) => m.slice()), signature: c.signature.slice(), publicKey: c.publicKey.slice() };
+  }
+
+  /** Deep copy of one slot for the guest vault (the caller wipes it), or null. */
+  exportSlot(handle: string): GuestSlotData | null {
+    const s = this.slots.get(handle);
+    if (!s) return null;
+    const c = s.credential;
+    return {
+      hostId: s.hostId, keyId: s.keyId, nullifier: s.nullifier.slice(), bookingNonce: s.bookingNonce.slice(), seed: s.seed.slice(),
+      proverBlind: s.proverBlind.slice(), pseudonym: s.pseudonym.slice(), expiresAt: s.expiresAt,
+      credential: c ? { keyId: c.keyId, epoch: c.epoch, slot: c.slot, messages: c.messages.map((m) => m.slice()), signature: c.signature.slice(), publicKey: c.publicKey.slice() } : null,
+    };
+  }
+
+  /** Installs a slot read back from the guest vault; takes ownership (wiped when refused). */
+  restore(handle: string, data: GuestSlotData, now = Date.now()): boolean {
+    this.sweep(now);
+    const sized = [data.nullifier, data.bookingNonce, data.seed, data.proverBlind, data.pseudonym].every((b) => b instanceof Uint8Array && b.byteLength === 32);
+    if (!sized || data.expiresAt <= now || this.slots.has(handle) || this.slots.size >= MAX_GUEST_SLOTS) {
+      wipe(data.nullifier, data.bookingNonce, data.seed, data.proverBlind, data.pseudonym);
+      if (data.credential) wipe(data.credential.signature, ...data.credential.messages);
+      return false;
+    }
+    this.slots.set(handle, data);
+    return true;
   }
 
   discard(handle: string): boolean {
