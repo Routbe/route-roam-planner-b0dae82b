@@ -26708,6 +26708,1021 @@
     },
     {
       "schema": "vault_enclave",
+      "name": "anon_booking_tokens",
+      "columns": [
+        {
+          "name": "token_id",
+          "type": "uuid",
+          "notNull": true,
+          "default": "gen_random_uuid()",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "root_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "nullifier",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "pseudonym",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "credential_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "presentation",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_booking_tokens_nullifier",
+          "kind": "u",
+          "def": "UNIQUE (tree_id, nullifier)"
+        },
+        {
+          "name": "anon_booking_tokens_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (token_id)"
+        },
+        {
+          "name": "anon_booking_tokens_pseudonym",
+          "kind": "u",
+          "def": "UNIQUE (tree_id, pseudonym)"
+        },
+        {
+          "name": "anon_booking_tokens_root",
+          "kind": "f",
+          "def": "FOREIGN KEY (tree_id, root_epoch) REFERENCES vault_enclave.anon_smt_roots(tree_id, epoch) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_booking_tokens_shape",
+          "kind": "c",
+          "def": "CHECK (((root_epoch >= 1) AND (octet_length(nullifier) = 32) AND (octet_length(pseudonym) = 32) AND (credential_epoch >= 0) AND vault_enclave.anon_is_proof(presentation)))"
+        },
+        {
+          "name": "anon_booking_tokens_step",
+          "kind": "u",
+          "def": "UNIQUE (tree_id, root_epoch)"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_booking_tokens_append_only BEFORE DELETE OR UPDATE ON vault_enclave.anon_booking_tokens FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_booking_tokens_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_booking_tokens FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_capacity_pools",
+      "columns": [
+        {
+          "name": "pool_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "opened_commitment",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "opened_proof",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "remaining_commitment",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "step",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_capacity_pools_id",
+          "kind": "c",
+          "def": "CHECK (vault_enclave.anon_id_ok(pool_id, 'cp'::text))"
+        },
+        {
+          "name": "anon_capacity_pools_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (pool_id)"
+        },
+        {
+          "name": "anon_capacity_pools_shape",
+          "kind": "c",
+          "def": "CHECK (((octet_length(opened_commitment) = 48) AND (octet_length(opened_proof) = 928) AND (octet_length(remaining_commitment) = 48) AND ((step >= 0) AND (step <= 65536))))"
+        },
+        {
+          "name": "anon_capacity_pools_tree_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (tree_id) REFERENCES vault_enclave.anon_smt_trees(tree_id) ON DELETE RESTRICT"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_capacity_pools_no_delete BEFORE DELETE ON vault_enclave.anon_capacity_pools FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_capacity_pools_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_capacity_pools FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_epoch_links",
+      "columns": [
+        {
+          "name": "key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "from_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "to_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "next_pk",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "link_sig",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_epoch_links_from",
+          "kind": "u",
+          "def": "UNIQUE (key_id, from_epoch)"
+        },
+        {
+          "name": "anon_epoch_links_key_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (key_id) REFERENCES vault_enclave.anon_host_keys(key_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_epoch_links_len",
+          "kind": "c",
+          "def": "CHECK (((octet_length(next_pk) = 96) AND (octet_length(link_sig) = 80)))"
+        },
+        {
+          "name": "anon_epoch_links_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (key_id, to_epoch)"
+        },
+        {
+          "name": "anon_epoch_links_step",
+          "kind": "c",
+          "def": "CHECK (((from_epoch >= 0) AND (to_epoch > from_epoch) AND ((to_epoch - from_epoch) <= 65536) AND (to_epoch <= '9007199254740991'::bigint)))"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_epoch_links_append_only BEFORE DELETE OR UPDATE ON vault_enclave.anon_epoch_links FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_epoch_links_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_epoch_links FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_key_states",
+      "columns": [
+        {
+          "name": "key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "state_envelope",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_host_key_states_env",
+          "kind": "c",
+          "def": "CHECK (vault_enclave.anon_is_hsk(state_envelope))"
+        },
+        {
+          "name": "anon_host_key_states_key_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (key_id) REFERENCES vault_enclave.anon_host_keys(key_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_host_key_states_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (key_id)"
+        }
+      ],
+      "indexes": [],
+      "triggers": [],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_keys",
+      "columns": [
+        {
+          "name": "key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "host_user_id",
+          "type": "uuid",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "anchor_pk",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "anchor_signer_pk",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "anchor_sig",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "current_pk",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "ver",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "purged_at",
+          "type": "timestamp with time zone",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_host_keys_epoch",
+          "kind": "c",
+          "def": "CHECK ((((epoch >= 0) AND (epoch <= '9007199254740991'::bigint)) AND (ver >= 0) AND ((epoch <> 0) OR (current_pk = anchor_pk))))"
+        },
+        {
+          "name": "anon_host_keys_host_user_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_host_keys_id",
+          "kind": "c",
+          "def": "CHECK (vault_enclave.anon_id_ok(key_id, 'hk'::text))"
+        },
+        {
+          "name": "anon_host_keys_len",
+          "kind": "c",
+          "def": "CHECK (((octet_length(anchor_pk) = 96) AND (octet_length(anchor_signer_pk) = 96) AND (octet_length(anchor_sig) = 80) AND (octet_length(current_pk) = 96)))"
+        },
+        {
+          "name": "anon_host_keys_owner",
+          "kind": "c",
+          "def": "CHECK ((((host_user_id IS NULL) = (purged_at IS NOT NULL)) AND ((purged_at IS NULL) OR (retired_at IS NOT NULL))))"
+        },
+        {
+          "name": "anon_host_keys_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (key_id)"
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX anon_host_keys_one_active ON vault_enclave.anon_host_keys USING btree (host_user_id) WHERE (retired_at IS NULL)"
+      ],
+      "triggers": [
+        "CREATE TRIGGER anon_host_keys_no_delete BEFORE DELETE ON vault_enclave.anon_host_keys FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_host_keys_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_host_keys FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_ledger_events",
+      "columns": [
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "root_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "smt_root",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "pool_id",
+          "type": "text",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "pool_step",
+          "type": "bigint",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "take_commitment",
+          "type": "bytea",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "remaining_commitment",
+          "type": "bytea",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "proof",
+          "type": "bytea",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "nullifier",
+          "type": "bytea",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "pseudonym",
+          "type": "bytea",
+          "notNull": false,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "prev_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "event_hash",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_ledger_events_hash",
+          "kind": "u",
+          "def": "UNIQUE (event_hash)"
+        },
+        {
+          "name": "anon_ledger_events_kind",
+          "kind": "c",
+          "def": "CHECK ((kind = ANY (ARRAY['genesis'::text, 'pool_open'::text, 'booking'::text, 'invalidate'::text, 'retire'::text])))"
+        },
+        {
+          "name": "anon_ledger_events_len",
+          "kind": "c",
+          "def": "CHECK (((seq >= 0) AND (root_epoch >= 0) AND (octet_length(smt_root) = 32) AND (octet_length(prev_hash) = 32) AND (octet_length(event_hash) = 32) AND ((take_commitment IS NULL) OR (octet_length(take_commitment) = 48)) AND ((remaining_commitment IS NULL) OR (octet_length(remaining_commitment) = 48)) AND ((nullifier IS NULL) OR (octet_length(nullifier) = 32)) AND ((pseudonym IS NULL) OR (octet_length(pseudonym) = 32))))"
+        },
+        {
+          "name": "anon_ledger_events_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (tree_id, seq)"
+        },
+        {
+          "name": "anon_ledger_events_pool_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (pool_id) REFERENCES vault_enclave.anon_capacity_pools(pool_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_ledger_events_shape",
+          "kind": "c",
+          "def": "CHECK ((((kind = 'genesis'::text) = (seq = 0)) AND\nCASE kind\n    WHEN 'genesis'::text THEN ((seq = 0) AND (prev_hash = '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea) AND (pool_id IS NULL) AND (nullifier IS NULL) AND (pseudonym IS NULL) AND (proof IS NULL))\n    WHEN 'pool_open'::text THEN ((pool_id IS NOT NULL) AND (pool_step = 0) AND (take_commitment IS NULL) AND (remaining_commitment IS NOT NULL) AND (octet_length(proof) = 928) AND (nullifier IS NULL) AND (pseudonym IS NULL))\n    WHEN 'booking'::text THEN ((nullifier IS NOT NULL) AND (pseudonym IS NOT NULL) AND (((pool_id IS NULL) AND (pool_step IS NULL) AND (take_commitment IS NULL) AND (remaining_commitment IS NULL) AND (proof IS NULL)) OR ((pool_id IS NOT NULL) AND (pool_step >= 1) AND (take_commitment IS NOT NULL) AND (remaining_commitment IS NOT NULL) AND (octet_length(proof) = 1856))))\n    WHEN 'invalidate'::text THEN ((pseudonym IS NOT NULL) AND (pool_id IS NULL) AND (nullifier IS NULL) AND (proof IS NULL))\n    ELSE ((pool_id IS NULL) AND (nullifier IS NULL) AND (pseudonym IS NULL) AND (proof IS NULL))\nEND))"
+        },
+        {
+          "name": "anon_ledger_events_tree_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (tree_id) REFERENCES vault_enclave.anon_smt_trees(tree_id) ON DELETE RESTRICT"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_ledger_events_append_only BEFORE DELETE OR UPDATE ON vault_enclave.anon_ledger_events FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_ledger_events_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_ledger_events FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_pseudonym_invalidations",
+      "columns": [
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "pseudonym",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "invalidated_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_pseudonym_invalidations_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (tree_id, pseudonym)"
+        },
+        {
+          "name": "anon_pseudonym_invalidations_reason",
+          "kind": "c",
+          "def": "CHECK ((reason = ANY (ARRAY['cancelled'::text, 'no_show'::text, 'abuse'::text, 'guest_request'::text])))"
+        },
+        {
+          "name": "anon_pseudonym_invalidations_token",
+          "kind": "f",
+          "def": "FOREIGN KEY (tree_id, pseudonym) REFERENCES vault_enclave.anon_booking_tokens(tree_id, pseudonym) ON DELETE RESTRICT"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_pseudonym_invalidations_append_only BEFORE DELETE OR UPDATE ON vault_enclave.anon_pseudonym_invalidations FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_pseudonym_invalidations_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_pseudonym_invalidations FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_smt_roots",
+      "columns": [
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "root",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "root_sig",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_smt_roots_genesis",
+          "kind": "c",
+          "def": "CHECK (((epoch >= 0) AND ((epoch <> 0) OR (root = '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea))))"
+        },
+        {
+          "name": "anon_smt_roots_len",
+          "kind": "c",
+          "def": "CHECK (((octet_length(root) = 32) AND (octet_length(root_sig) = 80)))"
+        },
+        {
+          "name": "anon_smt_roots_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (tree_id, epoch)"
+        },
+        {
+          "name": "anon_smt_roots_tree_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (tree_id) REFERENCES vault_enclave.anon_smt_trees(tree_id) ON DELETE RESTRICT"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_smt_roots_append_only BEFORE DELETE OR UPDATE ON vault_enclave.anon_smt_roots FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_smt_roots_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_smt_roots FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_smt_trees",
+      "columns": [
+        {
+          "name": "tree_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "key_id",
+          "type": "text",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "root_signer_pk",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "head_epoch",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "ledger_seq",
+          "type": "bigint",
+          "notNull": true,
+          "default": "0",
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "ledger_head",
+          "type": "bytea",
+          "notNull": true,
+          "default": null,
+          "identity": null,
+          "generated": null
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "notNull": true,
+          "default": "clock_timestamp()",
+          "identity": null,
+          "generated": null
+        }
+      ],
+      "constraints": [
+        {
+          "name": "anon_smt_trees_head",
+          "kind": "c",
+          "def": "CHECK ((head_epoch >= 0))"
+        },
+        {
+          "name": "anon_smt_trees_id",
+          "kind": "c",
+          "def": "CHECK (vault_enclave.anon_id_ok(tree_id, 'st'::text))"
+        },
+        {
+          "name": "anon_smt_trees_key_id_fkey",
+          "kind": "f",
+          "def": "FOREIGN KEY (key_id) REFERENCES vault_enclave.anon_host_keys(key_id) ON DELETE RESTRICT"
+        },
+        {
+          "name": "anon_smt_trees_key_id_key",
+          "kind": "u",
+          "def": "UNIQUE (key_id)"
+        },
+        {
+          "name": "anon_smt_trees_len",
+          "kind": "c",
+          "def": "CHECK (((octet_length(root_signer_pk) = 96) AND (octet_length(ledger_head) = 32) AND (ledger_seq >= 0)))"
+        },
+        {
+          "name": "anon_smt_trees_pkey",
+          "kind": "p",
+          "def": "PRIMARY KEY (tree_id)"
+        }
+      ],
+      "indexes": [],
+      "triggers": [
+        "CREATE TRIGGER anon_smt_trees_no_delete BEFORE DELETE ON vault_enclave.anon_smt_trees FOR EACH ROW EXECUTE FUNCTION vault_enclave.anon_append_only()",
+        "CREATE TRIGGER anon_smt_trees_no_truncate BEFORE TRUNCATE ON vault_enclave.anon_smt_trees FOR EACH STATEMENT EXECUTE FUNCTION vault_enclave.anon_append_only()"
+      ],
+      "rls": true,
+      "forceRls": false,
+      "policies": [
+        {
+          "name": "deny_all",
+          "permissive": false,
+          "roles": [
+            "public"
+          ],
+          "cmd": "ALL",
+          "using": "false",
+          "check": "false"
+        }
+      ],
+      "grants": {}
+    },
+    {
+      "schema": "vault_enclave",
       "name": "audit_logs",
       "columns": [
         {
@@ -26787,7 +27802,7 @@
         {
           "name": "audit_logs_action_check",
           "kind": "c",
-          "def": "CHECK ((action = ANY (ARRAY['step_up_register'::text, 'token_store'::text, 'token_retrieve'::text, 'server_key_register'::text, 'sdm_card_register'::text, 'sdm_recovery_retrieve'::text, 'sdm_recovery_confirm'::text, 'sdm_fleet_register'::text, 'sdm_batch_register'::text, 'sdm_batch_cards_register'::text, 'sdm_tap_begin'::text, 'sdm_tap_confirm'::text, 'sdm_tap_consume'::text, 'sdm_card_activate'::text, 'sdm_batch_list'::text, 'sdm_batch_export'::text, 'sdm_station_register'::text, 'sdm_station_list'::text, 'sdm_station_retire'::text, 'card_step_up_begin'::text, 'card_step_up_complete'::text, 'card_step_up_claim'::text, 'sdm_card_revoke'::text, 'pake_setup_register'::text, 'pake_register'::text, 'pake_signup_register'::text, 'pake_unregister'::text, 'pake_login'::text, 'passkey_attestation_record'::text, 'recovery_v4_begin'::text, 'recovery_v4_confirm'::text, 'recovery_v4_commit'::text, 'recovery_v4_abort'::text, 'recovery_v4_remove'::text, 'recovery_v4_expire'::text, 'recovery_v4_replay'::text, 'recovery_v4_compromise'::text, 'recovery_v4_server_share'::text])))"
+          "def": "CHECK ((action = ANY (ARRAY['step_up_register'::text, 'token_store'::text, 'token_retrieve'::text, 'server_key_register'::text, 'sdm_card_register'::text, 'sdm_recovery_retrieve'::text, 'sdm_recovery_confirm'::text, 'sdm_fleet_register'::text, 'sdm_batch_register'::text, 'sdm_batch_cards_register'::text, 'sdm_tap_begin'::text, 'sdm_tap_confirm'::text, 'sdm_tap_consume'::text, 'sdm_card_activate'::text, 'sdm_batch_list'::text, 'sdm_batch_export'::text, 'sdm_station_register'::text, 'sdm_station_list'::text, 'sdm_station_retire'::text, 'card_step_up_begin'::text, 'card_step_up_complete'::text, 'card_step_up_claim'::text, 'sdm_card_revoke'::text, 'pake_setup_register'::text, 'pake_register'::text, 'pake_signup_register'::text, 'pake_unregister'::text, 'pake_login'::text, 'passkey_attestation_record'::text, 'recovery_v4_begin'::text, 'recovery_v4_confirm'::text, 'recovery_v4_commit'::text, 'recovery_v4_abort'::text, 'recovery_v4_remove'::text, 'recovery_v4_expire'::text, 'recovery_v4_replay'::text, 'recovery_v4_compromise'::text, 'recovery_v4_server_share'::text, 'anon_host_key_init'::text, 'anon_host_key_advance'::text, 'anon_host_key_retire'::text, 'anon_host_state_read'::text, 'anon_booking_record'::text, 'anon_booking_check'::text, 'anon_pseudonym_invalidate'::text, 'anon_capacity_open'::text, 'anon_ledger_read'::text, 'anon_host_purge'::text, 'anon_host_merge'::text])))"
         },
         {
           "name": "audit_logs_entry_hash_key",
@@ -29276,7 +30291,7 @@
       "schema": "public",
       "name": "execute_account_merge",
       "args": "p_ticket_digest text, p_code_digest text, p_keep_handle text, p_keep_design text",
-      "def": "CREATE OR REPLACE FUNCTION public.execute_account_merge(p_ticket_digest text, p_code_digest text, p_keep_handle text, p_keep_design text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n v_secondary uuid := public.rout_current_user_id();\n v_primary uuid;\n v_ticket public.account_merge_tickets%rowtype;\n v_code public.security_codes%rowtype;\n v_p public.profiles%rowtype;\n v_s public.profiles%rowtype;\n v_p_auth uuid;\n v_s_auth uuid;\n v_p_design jsonb;\n v_s_design jsonb;\n v_relays_archived integer := 0;\nbegin\n if (session_user <> 'rout_app' and current_setting('role',true) <> 'rout_app') or v_secondary is null then\n   raise exception 'merge_caller_forbidden' using errcode='42501';\n end if;\n if p_keep_handle is null or p_keep_design is null or p_keep_handle not in ('primary','secondary') or p_keep_design not in ('primary','secondary') then\n   raise exception 'invalid_merge_choice';\n end if;\n select * into v_ticket from public.account_merge_tickets\n where (pin_hash=p_ticket_digest or token_hash=p_ticket_digest) and used_at is null and expires_at>clock_timestamp()\n order by created_at desc limit 1;\n if not found or v_ticket.preview_user_id is distinct from v_secondary or v_ticket.primary_user_id=v_secondary then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n v_primary:=v_ticket.primary_user_id;\n -- Deterministic locking serializes overlapping/reversed merges.\n perform 1 from public.users where id in (v_primary,v_secondary) order by id for update;\n if (select count(*) from public.users where id in (v_primary,v_secondary) and not is_disabled and account_status='active')<>2 then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n perform 1 from public.profiles where id in (v_primary,v_secondary) order by id for update;\n select * into v_ticket from public.account_merge_tickets where id=v_ticket.id for update;\n if not found or v_ticket.used_at is not null or v_ticket.expires_at<=clock_timestamp() or v_ticket.preview_user_id is distinct from v_secondary then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n select * into v_code from public.security_codes where user_id=v_secondary and purpose='merge' and consumed_at is null\n order by created_at desc limit 1 for update;\n if not found or v_code.attempts>=5 or v_code.expires_at<=clock_timestamp() then\n   return jsonb_build_object('ok',false,'reason','bad_code');\n end if;\n if v_code.code_hash is distinct from p_code_digest then\n   update public.security_codes set attempts=attempts+1 where id=v_code.id;\n   return jsonb_build_object('ok',false,'reason','bad_code');\n end if;\n select * into v_p from public.profiles where id=v_primary;\n if not found then raise exception 'merge_profile_missing'; end if;\n select * into v_s from public.profiles where id=v_secondary;\n if not found then raise exception 'merge_profile_missing'; end if;\n v_p_design:=jsonb_build_object('theme',v_p.theme,'card_style',v_p.card_style,'blocks',v_p.blocks,'display_prefs',v_p.display_prefs,'url_style',v_p.url_style,'bio',v_p.bio,'tagline',v_p.tagline,'avatar_url',v_p.avatar_url);\n v_s_design:=jsonb_build_object('theme',v_s.theme,'card_style',v_s.card_style,'blocks',v_s.blocks,'display_prefs',v_s.display_prefs,'url_style',v_s.url_style,'bio',v_s.bio,'tagline',v_s.tagline,'avatar_url',v_s.avatar_url);\n update public.account_merge_tickets set used_at=transaction_timestamp(),secondary_user_id=v_secondary where id=v_ticket.id;\n update public.security_codes set consumed_at=transaction_timestamp() where id=v_code.id;\n perform public.rout_merge_assert((not exists (select 1 from public.\"account_deletions\" where \"user_id\" = v_secondary)), 'merge_blocked:account_deletions');\n perform public.rout_merge_assert((not exists (select 1 from public.\"account_email_changes\" where \"user_id\" = v_secondary)), 'merge_blocked:account_email_changes');\n perform public.rout_merge_assert((not exists (select 1 from public.\"business_verifications\" where \"user_id\" = v_secondary)), 'merge_blocked:business_verifications');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_disclosure_logs\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_disclosure_logs');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_links\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_links');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_verifications\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_verifications');\n perform public.rout_merge_assert((not exists (select 1 from public.\"psp_credentials\" where \"user_id\" = v_secondary)), 'merge_blocked:psp_credentials');\n perform public.rout_merge_assert((not exists (select 1 from public.\"sepa_review_queue\" where \"user_id\" = v_secondary)), 'merge_blocked:sepa_review_queue');\n perform public.rout_merge_assert((not exists (select 1 from public.\"user_encrypted_audit_logs\" where \"user_id\" = v_secondary)), 'merge_blocked:user_encrypted_audit_logs');\n perform public.rout_merge_assert((not exists (select 1 from public.\"user_ledger_keys\" where \"user_id\" = v_secondary)), 'merge_blocked:user_ledger_keys');\n perform public.rout_merge_assert((not exists (select 1 from public.\"verification_payments\" where \"user_id\" = v_secondary)), 'merge_blocked:verification_payments');\n perform public.rout_merge_assert((not exists (select 1 from public.\"verified_identities\" where \"user_id\" = v_secondary)), 'merge_blocked:verified_identities');\n perform public.rout_merge_assert((not exists (select 1 from public.\"wallet_transactions\" where \"user_id\" = v_secondary)), 'merge_blocked:wallet_transactions');\n perform public.rout_merge_assert((not exists (select 1 from public.\"wallets\" where \"user_id\" = v_secondary)), 'merge_blocked:wallets');\n perform public.rout_merge_assert((not exists (select 1 from public.recovery_ceremonies where user_id = v_secondary)), 'merge_blocked:recovery_ceremonies');\n perform public.rout_merge_assert((not exists (select 1 from public.parent_authorizations where user_id = v_secondary)), 'merge_blocked:parent_authorizations');\n perform public.rout_merge_assert((not exists (select 1 from public.ephemeral_statuses where user_id = v_secondary)), 'merge_blocked:ephemeral_statuses');\n perform public.rout_merge_assert((not exists (select 1 from public.presence_broadcast_jobs where user_id = v_secondary)), 'merge_blocked:presence_broadcast_jobs');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_ingest_tokens where user_id = v_secondary)), 'merge_blocked:omni_ingest_tokens');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_jobs where user_id = v_secondary)), 'merge_blocked:omni_jobs');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_matrix_items where user_id = v_secondary)), 'merge_blocked:omni_matrix_items');\n perform public.rout_merge_assert((not exists (select 1 from public.social_grid_items where user_id = v_secondary)), 'merge_blocked:social_grid_items');\n perform public.rout_merge_assert((not exists (select 1 from public.card_designs where user_id = v_secondary)), 'merge_blocked:card_designs');\n perform public.rout_merge_assert((not exists (select 1 from public.card_freezes where user_id = v_secondary)), 'merge_blocked:card_freezes');\n perform public.rout_merge_assert((not exists (select 1 from public.factory_card_inventory where user_id = v_secondary)), 'merge_blocked:factory_card_inventory');\n perform public.rout_merge_assert((not exists (select 1 from public.physical_keys where user_id = v_secondary)), 'merge_blocked:physical_keys');\n perform public.rout_merge_assert((not exists (select 1 from public.wallet_passes where user_id = v_secondary)), 'merge_blocked:wallet_passes');\n perform public.rout_merge_assert((not exists (select 1 from public.oidc_subjects where user_id = v_secondary)), 'merge_blocked:oidc_subjects');\n perform public.rout_merge_assert((not exists (select 1 from public.app_issued_credentials where user_id = v_secondary)), 'merge_blocked:app_issued_credentials');\n perform public.rout_merge_assert((not exists (select 1 from public.user_connected_apps_visibility where user_id = v_secondary)), 'merge_blocked:user_connected_apps_visibility');\n perform public.rout_merge_assert((not exists (select 1 from public.rout_card_generations where user_id = v_secondary)), 'merge_blocked:rout_card_generations');\n delete from public.\"alias_sync_jobs\" where \"user_id\" = v_secondary;\n delete from public.\"auth_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"availability_cache\" where \"user_id\" = v_secondary;\n delete from public.\"availability_jobs\" where \"user_id\" = v_secondary;\n delete from public.\"forwarding_confirmation_sends\" where \"user_id\" = v_secondary;\n delete from public.\"identity_verification_sessions\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_access_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_auth_codes\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_refresh_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_step_up_challenges\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_step_up_codes\" where \"user_id\" = v_secondary;\n delete from public.\"phone_otp_codes\" where \"user_id\" = v_secondary;\n delete from public.\"profile_drafts\" where \"user_id\" = v_secondary;\n delete from public.\"security_codes\" where \"user_id\" = v_secondary;\n delete from public.\"user_sessions\" where \"user_id\" = v_secondary;\n delete from public.\"admin_permissions\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"admin_permissions\" p where p.\"user_id\" = v_primary and p.permission = s.permission);\n update public.\"admin_permissions\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"alias_profiles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"alias_profiles\" p where p.\"user_id\" = v_primary);\n update public.\"alias_profiles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"ambient_weather_locations\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"ambient_weather_locations\" p where p.\"user_id\" = v_primary);\n update public.\"ambient_weather_locations\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"app_email_assignments\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"app_email_assignments\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"app_email_assignments\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"approved_handles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"approved_handles\" p where p.\"user_id\" = v_primary and lower(p.handle) = lower(s.handle));\n update public.\"approved_handles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"badge_claim_redemptions\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"badge_claim_redemptions\" p where p.\"user_id\" = v_primary and p.link_id = s.link_id);\n update public.\"badge_claim_redemptions\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"booking_event_type_hosts\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"booking_event_type_hosts\" p where p.\"user_id\" = v_primary and p.event_type_id = s.event_type_id);\n update public.\"booking_event_type_hosts\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"booking_event_types\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"booking_event_types\" p where p.\"user_id\" = v_primary and p.slug = s.slug);\n update public.\"booking_event_types\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"bunq_oauth_tokens\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"bunq_oauth_tokens\" p where p.\"user_id\" = v_primary and p.environment = s.environment);\n update public.\"bunq_oauth_tokens\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"nfc_waitlist\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"nfc_waitlist\" p where p.\"user_id\" = v_primary);\n update public.\"nfc_waitlist\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"oauth_consents\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"oauth_consents\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"oauth_consents\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"oauth_email_forwarding_rules\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"oauth_email_forwarding_rules\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"oauth_email_forwarding_rules\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n -- Identity relays (0157/0158): the primary's relay wins per connected app. A secondary\n -- duplicate is archived for the primary, then removed; its forwarding rule was\n -- deduplicated above, so the archived proxy no longer forwards. Moved relays follow\n -- the primary address. Late-bound: tables come from 0157/0158.\n insert into public.identity_relay_merge_archive(user_id,merged_from_user_id,connected_app_id,proxy_email,target_email,status,relay_created_at)\n select v_primary,s.user_id,s.connected_app_id,s.proxy_email,s.target_email,s.status,s.created_at\n from public.identity_relays s where s.user_id = v_secondary and exists (select 1 from public.identity_relays p where p.user_id = v_primary and p.connected_app_id = s.connected_app_id);\n get diagnostics v_relays_archived = row_count;\n delete from public.identity_relays s where s.user_id = v_secondary and exists (select 1 from public.identity_relays p where p.user_id = v_primary and p.connected_app_id = s.connected_app_id);\n update public.identity_relays set user_id = v_primary,\n   target_email = coalesce((select lower(u.email) from public.users u where u.id = v_primary and position('@' in coalesce(u.email,'')) > 1), target_email),\n   updated_at = now()\n where user_id = v_secondary;\n update public.identity_relay_merge_archive set user_id = v_primary where user_id = v_secondary;\n if v_relays_archived > 0 then\n   insert into public.notifications(user_id,kind,title,body,severity,details)\n   values(v_primary,'account.merge.relays_archived','Dubbele relays gearchiveerd',\n     format('%s privé-relay(s) van je samengevoegde account bestonden al voor dezelfde app. Je bestaande relay blijft actief; de dubbele is gearchiveerd en stuurt geen mail meer door.', v_relays_archived),\n     'warning',jsonb_build_object('count',v_relays_archived));\n end if;\n delete from public.\"pro_waitlist\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"pro_waitlist\" p where p.\"user_id\" = v_primary);\n update public.\"pro_waitlist\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"profile_ingest_tokens\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"profile_ingest_tokens\" p where p.\"user_id\" = v_primary);\n update public.\"profile_ingest_tokens\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"reserved_brand_releases\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"reserved_brand_releases\" p where p.\"user_id\" = v_primary and p.term = s.term);\n update public.\"reserved_brand_releases\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"social_block_settings\" s where s.\"profile_id\" = v_secondary and exists (select 1 from public.\"social_block_settings\" p where p.\"profile_id\" = v_primary and p.platform = s.platform and lower(p.handle) = lower(s.handle));\n update public.\"social_block_settings\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n delete from public.\"social_follow_links\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"social_follow_links\" p where p.\"user_id\" = v_primary and p.network = s.network and p.remote_actor = s.remote_actor and p.direction = s.direction);\n update public.\"social_follow_links\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"social_links\" s where s.\"profile_id\" = v_secondary and exists (select 1 from public.\"social_links\" p where p.\"profile_id\" = v_primary and p.platform = s.platform);\n update public.\"social_links\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n delete from public.\"tip_settings\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"tip_settings\" p where p.\"user_id\" = v_primary);\n update public.\"tip_settings\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_badges\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_badges\" p where p.\"user_id\" = v_primary and p.badge_id = s.badge_id);\n update public.\"user_badges\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_calendar_feeds\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_calendar_feeds\" p where p.\"user_id\" = v_primary);\n update public.\"user_calendar_feeds\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_custom_badges\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_custom_badges\" p where p.\"user_id\" = v_primary and p.badge_id = s.badge_id);\n update public.\"user_custom_badges\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_custom_presence\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_custom_presence\" p where p.\"user_id\" = v_primary);\n update public.\"user_custom_presence\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_feature_blocks\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_feature_blocks\" p where p.\"user_id\" = v_primary and p.feature = s.feature);\n update public.\"user_feature_blocks\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_integration_links\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_integration_links\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_integration_links\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_integrations\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_integrations\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_integrations\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_music_status\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_music_status\" p where p.\"user_id\" = v_primary);\n update public.\"user_music_status\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_phone_numbers\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_phone_numbers\" p where p.\"user_id\" = v_primary);\n update public.\"user_phone_numbers\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_presence_connections\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_presence_connections\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_presence_connections\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_roles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_roles\" p where p.\"user_id\" = v_primary and p.role = s.role);\n update public.\"user_roles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_snapchat\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_snapchat\" p where p.\"user_id\" = v_primary);\n update public.\"user_snapchat\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"workspace_members\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"workspace_members\" p where p.\"user_id\" = v_primary and p.workspace_id = s.workspace_id);\n update public.\"workspace_members\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"analytics_events\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"api_keys\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"availability_overrides\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"availability_rules\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"avatar_objects\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"badge_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"booking_requests\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"community_reviews\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"connected_calendars\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"custom_domains\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"domain_claims\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"email_aliases\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"feedback_forms\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"gallery_objects\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"influencer_requests\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"invoice_deliveries\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"links\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"notifications\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"oauth_email_deliveries\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"profile_design_templates\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"profile_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"public_activity\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"saved_qrs\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"security_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"shared_files\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"subdomain_root_claims\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"tracked_qrs\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_assets\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_identities\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_linked_accounts\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n\n select coalesce(auth_user_id,nullif(user_metadata->>'neon_auth_id','')::uuid) into v_p_auth from public.users where id=v_primary;\n select coalesce(auth_user_id,nullif(user_metadata->>'neon_auth_id','')::uuid) into v_s_auth from public.users where id=v_secondary;\n -- Release canonical FK before native deletion/adoption (ON DELETE CASCADE).\n update public.users set auth_user_id=null,user_metadata=user_metadata-'neon_auth_id' where id=v_secondary;\n if v_s_auth is not null and v_s_auth is distinct from v_p_auth then\n   delete from neon_auth.session where \"userId\"=v_s_auth;\n   if v_p_auth is null then\n     update public.users set auth_user_id=v_s_auth,user_metadata=coalesce(user_metadata,'{}'::jsonb)||jsonb_build_object('neon_auth_id',v_s_auth::text) where id=v_primary;\n   else\n     insert into public.merged_auth_account_archive(primary_user_id,secondary_auth_user_id,provider_id,provider_account_id,original_created_at)\n     select v_primary,v_s_auth::text,s.\"providerId\",s.\"accountId\",s.\"createdAt\" from neon_auth.account s where s.\"userId\"=v_s_auth and exists(select 1 from neon_auth.account p where p.\"userId\"=v_p_auth and p.\"providerId\"=s.\"providerId\");\n     delete from neon_auth.account s where s.\"userId\"=v_s_auth and exists(select 1 from neon_auth.account p where p.\"userId\"=v_p_auth and p.\"providerId\"=s.\"providerId\");\n     update neon_auth.account set \"userId\"=v_p_auth,\"updatedAt\"=now() where \"userId\"=v_s_auth;\n     update neon_auth.passkey set \"userId\"=v_p_auth::text where \"userId\"=v_s_auth::text;\n     delete from neon_auth.\"twoFactor\" where \"userId\"=v_s_auth::text;\n     delete from neon_auth.\"user\" where id=v_s_auth;\n   end if;\n end if;\n update public.profiles p set verified=p.verified or v_s.verified, verified_at=coalesce(p.verified_at,v_s.verified_at),verified_legal_name=coalesce(p.verified_legal_name,v_s.verified_legal_name),tier=case when v_s.tier='verified' or p.tier='verified' then 'verified' else p.tier end,is_paid=p.is_paid or v_s.is_paid,is_early_believer=p.is_early_believer or v_s.is_early_believer,is_business=p.is_business or v_s.is_business,is_influencer=p.is_influencer or v_s.is_influencer,updated_at=now() where p.id=v_primary;\n if p_keep_design='secondary' then\n   insert into public.profile_design_templates(user_id,name,payload)\n   select v_primary,left('Ontwerp van @'||coalesce(v_p.username,'hoofdaccount'),60),v_p_design\n   where (select count(*) from public.profile_design_templates where user_id=v_primary)<30 and not exists(select 1 from public.profile_design_templates where user_id=v_primary and payload=v_p_design);\n   update public.profiles set theme=v_s.theme,card_style=v_s.card_style,blocks=v_s.blocks,display_prefs=v_s.display_prefs,url_style=v_s.url_style,bio=v_s.bio,tagline=v_s.tagline,avatar_url=v_s.avatar_url,updated_at=now() where id=v_primary;\n   delete from public.profile_drafts where user_id=v_primary and space='verified';\n end if;\n insert into public.profile_design_templates(user_id,name,payload)\n select v_primary,left('Ontwerp van @'||coalesce(v_s.username,'tweede account'),60),v_s_design\n where (select count(*) from public.profile_design_templates where user_id=v_primary)<30 and not exists(select 1 from public.profile_design_templates where user_id=v_primary and payload=v_s_design);\n delete from public.profiles where id=v_secondary;\n delete from public.users where id=v_secondary;\n if p_keep_handle='secondary' and v_s.username is not null then\n   update public.profiles set username=v_s.username,updated_at=now() where id=v_primary;\n end if;\n insert into public.security_events(user_id,kind,message,severity,details)\n values(v_primary,'account.merged','Account merged','info',jsonb_build_object('ticket_id',v_ticket.id));\n return jsonb_build_object('ok',true,'primaryUserId',v_primary);\nend $function$"
+      "def": "CREATE OR REPLACE FUNCTION public.execute_account_merge(p_ticket_digest text, p_code_digest text, p_keep_handle text, p_keep_design text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n v_secondary uuid := public.rout_current_user_id();\n v_primary uuid;\n v_ticket public.account_merge_tickets%rowtype;\n v_code public.security_codes%rowtype;\n v_p public.profiles%rowtype;\n v_s public.profiles%rowtype;\n v_p_auth uuid;\n v_s_auth uuid;\n v_p_design jsonb;\n v_s_design jsonb;\n v_relays_archived integer := 0;\nbegin\n if (session_user <> 'rout_app' and current_setting('role',true) <> 'rout_app') or v_secondary is null then\n   raise exception 'merge_caller_forbidden' using errcode='42501';\n end if;\n if p_keep_handle is null or p_keep_design is null or p_keep_handle not in ('primary','secondary') or p_keep_design not in ('primary','secondary') then\n   raise exception 'invalid_merge_choice';\n end if;\n select * into v_ticket from public.account_merge_tickets\n where (pin_hash=p_ticket_digest or token_hash=p_ticket_digest) and used_at is null and expires_at>clock_timestamp()\n order by created_at desc limit 1;\n if not found or v_ticket.preview_user_id is distinct from v_secondary or v_ticket.primary_user_id=v_secondary then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n v_primary:=v_ticket.primary_user_id;\n -- Deterministic locking serializes overlapping/reversed merges.\n perform 1 from public.users where id in (v_primary,v_secondary) order by id for update;\n if (select count(*) from public.users where id in (v_primary,v_secondary) and not is_disabled and account_status='active')<>2 then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n perform 1 from public.profiles where id in (v_primary,v_secondary) order by id for update;\n select * into v_ticket from public.account_merge_tickets where id=v_ticket.id for update;\n if not found or v_ticket.used_at is not null or v_ticket.expires_at<=clock_timestamp() or v_ticket.preview_user_id is distinct from v_secondary then\n   raise exception 'merge_ticket_not_claimable';\n end if;\n select * into v_code from public.security_codes where user_id=v_secondary and purpose='merge' and consumed_at is null\n order by created_at desc limit 1 for update;\n if not found or v_code.attempts>=5 or v_code.expires_at<=clock_timestamp() then\n   return jsonb_build_object('ok',false,'reason','bad_code');\n end if;\n if v_code.code_hash is distinct from p_code_digest then\n   update public.security_codes set attempts=attempts+1 where id=v_code.id;\n   return jsonb_build_object('ok',false,'reason','bad_code');\n end if;\n select * into v_p from public.profiles where id=v_primary;\n if not found then raise exception 'merge_profile_missing'; end if;\n select * into v_s from public.profiles where id=v_secondary;\n if not found then raise exception 'merge_profile_missing'; end if;\n v_p_design:=jsonb_build_object('theme',v_p.theme,'card_style',v_p.card_style,'blocks',v_p.blocks,'display_prefs',v_p.display_prefs,'url_style',v_p.url_style,'bio',v_p.bio,'tagline',v_p.tagline,'avatar_url',v_p.avatar_url);\n v_s_design:=jsonb_build_object('theme',v_s.theme,'card_style',v_s.card_style,'blocks',v_s.blocks,'display_prefs',v_s.display_prefs,'url_style',v_s.url_style,'bio',v_s.bio,'tagline',v_s.tagline,'avatar_url',v_s.avatar_url);\n update public.account_merge_tickets set used_at=transaction_timestamp(),secondary_user_id=v_secondary where id=v_ticket.id;\n update public.security_codes set consumed_at=transaction_timestamp() where id=v_code.id;\n perform public.rout_merge_assert((not exists (select 1 from public.\"account_deletions\" where \"user_id\" = v_secondary)), 'merge_blocked:account_deletions');\n perform public.rout_merge_assert((not exists (select 1 from public.\"account_email_changes\" where \"user_id\" = v_secondary)), 'merge_blocked:account_email_changes');\n perform public.rout_merge_assert((not exists (select 1 from public.\"business_verifications\" where \"user_id\" = v_secondary)), 'merge_blocked:business_verifications');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_disclosure_logs\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_disclosure_logs');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_links\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_links');\n perform public.rout_merge_assert((not exists (select 1 from public.\"identity_verifications\" where \"user_id\" = v_secondary)), 'merge_blocked:identity_verifications');\n perform public.rout_merge_assert((not exists (select 1 from public.\"psp_credentials\" where \"user_id\" = v_secondary)), 'merge_blocked:psp_credentials');\n perform public.rout_merge_assert((not exists (select 1 from public.\"sepa_review_queue\" where \"user_id\" = v_secondary)), 'merge_blocked:sepa_review_queue');\n perform public.rout_merge_assert((not exists (select 1 from public.\"user_encrypted_audit_logs\" where \"user_id\" = v_secondary)), 'merge_blocked:user_encrypted_audit_logs');\n perform public.rout_merge_assert((not exists (select 1 from public.\"user_ledger_keys\" where \"user_id\" = v_secondary)), 'merge_blocked:user_ledger_keys');\n perform public.rout_merge_assert((not exists (select 1 from public.\"verification_payments\" where \"user_id\" = v_secondary)), 'merge_blocked:verification_payments');\n perform public.rout_merge_assert((not exists (select 1 from public.\"verified_identities\" where \"user_id\" = v_secondary)), 'merge_blocked:verified_identities');\n perform public.rout_merge_assert((not exists (select 1 from public.\"wallet_transactions\" where \"user_id\" = v_secondary)), 'merge_blocked:wallet_transactions');\n perform public.rout_merge_assert((not exists (select 1 from public.\"wallets\" where \"user_id\" = v_secondary)), 'merge_blocked:wallets');\n perform public.rout_merge_assert((not exists (select 1 from public.recovery_ceremonies where user_id = v_secondary)), 'merge_blocked:recovery_ceremonies');\n perform public.rout_merge_assert((not exists (select 1 from public.parent_authorizations where user_id = v_secondary)), 'merge_blocked:parent_authorizations');\n perform public.rout_merge_assert((not exists (select 1 from public.ephemeral_statuses where user_id = v_secondary)), 'merge_blocked:ephemeral_statuses');\n perform public.rout_merge_assert((not exists (select 1 from public.presence_broadcast_jobs where user_id = v_secondary)), 'merge_blocked:presence_broadcast_jobs');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_ingest_tokens where user_id = v_secondary)), 'merge_blocked:omni_ingest_tokens');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_jobs where user_id = v_secondary)), 'merge_blocked:omni_jobs');\n perform public.rout_merge_assert((not exists (select 1 from public.omni_matrix_items where user_id = v_secondary)), 'merge_blocked:omni_matrix_items');\n perform public.rout_merge_assert((not exists (select 1 from public.social_grid_items where user_id = v_secondary)), 'merge_blocked:social_grid_items');\n perform public.rout_merge_assert((not exists (select 1 from public.card_designs where user_id = v_secondary)), 'merge_blocked:card_designs');\n perform public.rout_merge_assert((not exists (select 1 from public.card_freezes where user_id = v_secondary)), 'merge_blocked:card_freezes');\n perform public.rout_merge_assert((not exists (select 1 from public.factory_card_inventory where user_id = v_secondary)), 'merge_blocked:factory_card_inventory');\n perform public.rout_merge_assert((not exists (select 1 from public.physical_keys where user_id = v_secondary)), 'merge_blocked:physical_keys');\n perform public.rout_merge_assert((not exists (select 1 from public.wallet_passes where user_id = v_secondary)), 'merge_blocked:wallet_passes');\n perform public.rout_merge_assert((not exists (select 1 from public.oidc_subjects where user_id = v_secondary)), 'merge_blocked:oidc_subjects');\n perform public.rout_merge_assert((not exists (select 1 from public.app_issued_credentials where user_id = v_secondary)), 'merge_blocked:app_issued_credentials');\n perform public.rout_merge_assert((not exists (select 1 from public.user_connected_apps_visibility where user_id = v_secondary)), 'merge_blocked:user_connected_apps_visibility');\n perform public.rout_merge_assert((not exists (select 1 from public.rout_card_generations where user_id = v_secondary)), 'merge_blocked:rout_card_generations');\n delete from public.\"alias_sync_jobs\" where \"user_id\" = v_secondary;\n delete from public.\"auth_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"availability_cache\" where \"user_id\" = v_secondary;\n delete from public.\"availability_jobs\" where \"user_id\" = v_secondary;\n delete from public.\"forwarding_confirmation_sends\" where \"user_id\" = v_secondary;\n delete from public.\"identity_verification_sessions\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_access_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_auth_codes\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_refresh_tokens\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_step_up_challenges\" where \"user_id\" = v_secondary;\n delete from public.\"oauth_step_up_codes\" where \"user_id\" = v_secondary;\n delete from public.\"phone_otp_codes\" where \"user_id\" = v_secondary;\n delete from public.\"profile_drafts\" where \"user_id\" = v_secondary;\n delete from public.\"security_codes\" where \"user_id\" = v_secondary;\n delete from public.\"user_sessions\" where \"user_id\" = v_secondary;\n delete from public.\"admin_permissions\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"admin_permissions\" p where p.\"user_id\" = v_primary and p.permission = s.permission);\n update public.\"admin_permissions\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"alias_profiles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"alias_profiles\" p where p.\"user_id\" = v_primary);\n update public.\"alias_profiles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"ambient_weather_locations\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"ambient_weather_locations\" p where p.\"user_id\" = v_primary);\n update public.\"ambient_weather_locations\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"app_email_assignments\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"app_email_assignments\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"app_email_assignments\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"approved_handles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"approved_handles\" p where p.\"user_id\" = v_primary and lower(p.handle) = lower(s.handle));\n update public.\"approved_handles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"badge_claim_redemptions\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"badge_claim_redemptions\" p where p.\"user_id\" = v_primary and p.link_id = s.link_id);\n update public.\"badge_claim_redemptions\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"booking_event_type_hosts\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"booking_event_type_hosts\" p where p.\"user_id\" = v_primary and p.event_type_id = s.event_type_id);\n update public.\"booking_event_type_hosts\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"booking_event_types\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"booking_event_types\" p where p.\"user_id\" = v_primary and p.slug = s.slug);\n update public.\"booking_event_types\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"bunq_oauth_tokens\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"bunq_oauth_tokens\" p where p.\"user_id\" = v_primary and p.environment = s.environment);\n update public.\"bunq_oauth_tokens\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"nfc_waitlist\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"nfc_waitlist\" p where p.\"user_id\" = v_primary);\n update public.\"nfc_waitlist\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"oauth_consents\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"oauth_consents\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"oauth_consents\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"oauth_email_forwarding_rules\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"oauth_email_forwarding_rules\" p where p.\"user_id\" = v_primary and p.client_id = s.client_id);\n update public.\"oauth_email_forwarding_rules\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n -- Identity relays (0157/0158): the primary's relay wins per connected app. A secondary\n -- duplicate is archived for the primary, then removed; its forwarding rule was\n -- deduplicated above, so the archived proxy no longer forwards. Moved relays follow\n -- the primary address. Late-bound: tables come from 0157/0158.\n insert into public.identity_relay_merge_archive(user_id,merged_from_user_id,connected_app_id,proxy_email,target_email,status,relay_created_at)\n select v_primary,s.user_id,s.connected_app_id,s.proxy_email,s.target_email,s.status,s.created_at\n from public.identity_relays s where s.user_id = v_secondary and exists (select 1 from public.identity_relays p where p.user_id = v_primary and p.connected_app_id = s.connected_app_id);\n get diagnostics v_relays_archived = row_count;\n delete from public.identity_relays s where s.user_id = v_secondary and exists (select 1 from public.identity_relays p where p.user_id = v_primary and p.connected_app_id = s.connected_app_id);\n update public.identity_relays set user_id = v_primary,\n   target_email = coalesce((select lower(u.email) from public.users u where u.id = v_primary and position('@' in coalesce(u.email,'')) > 1), target_email),\n   updated_at = now()\n where user_id = v_secondary;\n update public.identity_relay_merge_archive set user_id = v_primary where user_id = v_secondary;\n if v_relays_archived > 0 then\n   insert into public.notifications(user_id,kind,title,body,severity,details)\n   values(v_primary,'account.merge.relays_archived','Dubbele relays gearchiveerd',\n     format('%s privé-relay(s) van je samengevoegde account bestonden al voor dezelfde app. Je bestaande relay blijft actief; de dubbele is gearchiveerd en stuurt geen mail meer door.', v_relays_archived),\n     'warning',jsonb_build_object('count',v_relays_archived));\n end if;\n delete from public.\"pro_waitlist\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"pro_waitlist\" p where p.\"user_id\" = v_primary);\n update public.\"pro_waitlist\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"profile_ingest_tokens\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"profile_ingest_tokens\" p where p.\"user_id\" = v_primary);\n update public.\"profile_ingest_tokens\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"reserved_brand_releases\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"reserved_brand_releases\" p where p.\"user_id\" = v_primary and p.term = s.term);\n update public.\"reserved_brand_releases\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"social_block_settings\" s where s.\"profile_id\" = v_secondary and exists (select 1 from public.\"social_block_settings\" p where p.\"profile_id\" = v_primary and p.platform = s.platform and lower(p.handle) = lower(s.handle));\n update public.\"social_block_settings\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n delete from public.\"social_follow_links\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"social_follow_links\" p where p.\"user_id\" = v_primary and p.network = s.network and p.remote_actor = s.remote_actor and p.direction = s.direction);\n update public.\"social_follow_links\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"social_links\" s where s.\"profile_id\" = v_secondary and exists (select 1 from public.\"social_links\" p where p.\"profile_id\" = v_primary and p.platform = s.platform);\n update public.\"social_links\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n delete from public.\"tip_settings\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"tip_settings\" p where p.\"user_id\" = v_primary);\n update public.\"tip_settings\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_badges\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_badges\" p where p.\"user_id\" = v_primary and p.badge_id = s.badge_id);\n update public.\"user_badges\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_calendar_feeds\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_calendar_feeds\" p where p.\"user_id\" = v_primary);\n update public.\"user_calendar_feeds\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_custom_badges\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_custom_badges\" p where p.\"user_id\" = v_primary and p.badge_id = s.badge_id);\n update public.\"user_custom_badges\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_custom_presence\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_custom_presence\" p where p.\"user_id\" = v_primary);\n update public.\"user_custom_presence\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_feature_blocks\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_feature_blocks\" p where p.\"user_id\" = v_primary and p.feature = s.feature);\n update public.\"user_feature_blocks\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_integration_links\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_integration_links\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_integration_links\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_integrations\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_integrations\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_integrations\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_music_status\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_music_status\" p where p.\"user_id\" = v_primary);\n update public.\"user_music_status\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_phone_numbers\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_phone_numbers\" p where p.\"user_id\" = v_primary);\n update public.\"user_phone_numbers\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_presence_connections\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_presence_connections\" p where p.\"user_id\" = v_primary and p.provider = s.provider);\n update public.\"user_presence_connections\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_roles\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_roles\" p where p.\"user_id\" = v_primary and p.role = s.role);\n update public.\"user_roles\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"user_snapchat\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"user_snapchat\" p where p.\"user_id\" = v_primary);\n update public.\"user_snapchat\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n delete from public.\"workspace_members\" s where s.\"user_id\" = v_secondary and exists (select 1 from public.\"workspace_members\" p where p.\"user_id\" = v_primary and p.workspace_id = s.workspace_id);\n update public.\"workspace_members\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"analytics_events\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"api_keys\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"availability_overrides\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"availability_rules\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"avatar_objects\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"badge_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"booking_requests\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"community_reviews\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"connected_calendars\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"custom_domains\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"domain_claims\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"email_aliases\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"feedback_forms\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"gallery_objects\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"influencer_requests\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"invoice_deliveries\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"links\" set \"profile_id\" = v_primary where \"profile_id\" = v_secondary;\n update public.\"notifications\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"oauth_email_deliveries\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"profile_design_templates\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"profile_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"public_activity\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"saved_qrs\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"security_events\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"shared_files\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"subdomain_root_claims\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"tracked_qrs\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_assets\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_identities\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n update public.\"user_linked_accounts\" set \"user_id\" = v_primary where \"user_id\" = v_secondary;\n\n select coalesce(auth_user_id,nullif(user_metadata->>'neon_auth_id','')::uuid) into v_p_auth from public.users where id=v_primary;\n select coalesce(auth_user_id,nullif(user_metadata->>'neon_auth_id','')::uuid) into v_s_auth from public.users where id=v_secondary;\n -- Release canonical FK before native deletion/adoption (ON DELETE CASCADE).\n update public.users set auth_user_id=null,user_metadata=user_metadata-'neon_auth_id' where id=v_secondary;\n if v_s_auth is not null and v_s_auth is distinct from v_p_auth then\n   delete from neon_auth.session where \"userId\"=v_s_auth;\n   if v_p_auth is null then\n     update public.users set auth_user_id=v_s_auth,user_metadata=coalesce(user_metadata,'{}'::jsonb)||jsonb_build_object('neon_auth_id',v_s_auth::text) where id=v_primary;\n   else\n     insert into public.merged_auth_account_archive(primary_user_id,secondary_auth_user_id,provider_id,provider_account_id,original_created_at)\n     select v_primary,v_s_auth::text,s.\"providerId\",s.\"accountId\",s.\"createdAt\" from neon_auth.account s where s.\"userId\"=v_s_auth and exists(select 1 from neon_auth.account p where p.\"userId\"=v_p_auth and p.\"providerId\"=s.\"providerId\");\n     delete from neon_auth.account s where s.\"userId\"=v_s_auth and exists(select 1 from neon_auth.account p where p.\"userId\"=v_p_auth and p.\"providerId\"=s.\"providerId\");\n     update neon_auth.account set \"userId\"=v_p_auth,\"updatedAt\"=now() where \"userId\"=v_s_auth;\n     update neon_auth.passkey set \"userId\"=v_p_auth::text where \"userId\"=v_s_auth::text;\n     delete from neon_auth.\"twoFactor\" where \"userId\"=v_s_auth::text;\n     delete from neon_auth.\"user\" where id=v_s_auth;\n   end if;\n end if;\n update public.profiles p set verified=p.verified or v_s.verified, verified_at=coalesce(p.verified_at,v_s.verified_at),verified_legal_name=coalesce(p.verified_legal_name,v_s.verified_legal_name),tier=case when v_s.tier='verified' or p.tier='verified' then 'verified' else p.tier end,is_paid=p.is_paid or v_s.is_paid,is_early_believer=p.is_early_believer or v_s.is_early_believer,is_business=p.is_business or v_s.is_business,is_influencer=p.is_influencer or v_s.is_influencer,updated_at=now() where p.id=v_primary;\n if p_keep_design='secondary' then\n   insert into public.profile_design_templates(user_id,name,payload)\n   select v_primary,left('Ontwerp van @'||coalesce(v_p.username,'hoofdaccount'),60),v_p_design\n   where (select count(*) from public.profile_design_templates where user_id=v_primary)<30 and not exists(select 1 from public.profile_design_templates where user_id=v_primary and payload=v_p_design);\n   update public.profiles set theme=v_s.theme,card_style=v_s.card_style,blocks=v_s.blocks,display_prefs=v_s.display_prefs,url_style=v_s.url_style,bio=v_s.bio,tagline=v_s.tagline,avatar_url=v_s.avatar_url,updated_at=now() where id=v_primary;\n   delete from public.profile_drafts where user_id=v_primary and space='verified';\n end if;\n insert into public.profile_design_templates(user_id,name,payload)\n select v_primary,left('Ontwerp van @'||coalesce(v_s.username,'tweede account'),60),v_s_design\n where (select count(*) from public.profile_design_templates where user_id=v_primary)<30 and not exists(select 1 from public.profile_design_templates where user_id=v_primary and payload=v_s_design);\n delete from public.profiles where id=v_secondary;\n perform public.rout_anon_booking_merge(v_primary, v_secondary);\n delete from public.users where id=v_secondary;\n if p_keep_handle='secondary' and v_s.username is not null then\n   update public.profiles set username=v_s.username,updated_at=now() where id=v_primary;\n end if;\n insert into public.security_events(user_id,kind,message,severity,details)\n values(v_primary,'account.merged','Account merged','info',jsonb_build_object('ticket_id',v_ticket.id));\n return jsonb_build_object('ok',true,'primaryUserId',v_primary);\nend $function$"
     },
     {
       "schema": "public",
@@ -29613,6 +30628,18 @@
       "name": "rout_altcha_verify_and_burn",
       "args": "p_signature text, p_expires_at timestamp with time zone",
       "def": "CREATE OR REPLACE FUNCTION public.rout_altcha_verify_and_burn(p_signature text, p_expires_at timestamp with time zone)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare v text;\nbegin\n  if p_signature is null or p_signature !~ '^[0-9a-f]{64}$' or p_expires_at is null then return 'invalid'; end if;\n  if p_expires_at <= pg_catalog.now() then return 'expired'; end if;\n  if p_expires_at > pg_catalog.now() + interval '1 day' then return 'invalid'; end if;\n  insert into public.altcha_used (signature, expires_at) values (p_signature, p_expires_at)\n  on conflict (signature) do nothing\n  returning signature into v;\n  return case when v is null then 'replayed' else 'ok' end;\nend $function$"
+    },
+    {
+      "schema": "public",
+      "name": "rout_anon_booking_merge",
+      "args": "p_primary uuid, p_secondary uuid",
+      "def": "CREATE OR REPLACE FUNCTION public.rout_anon_booking_merge(p_primary uuid, p_secondary uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  if p_primary is null or p_secondary is null or p_primary = p_secondary\n     or vault_enclave.caller_user_id() is distinct from p_secondary\n     or not exists (select 1 from public.users u where u.id = p_primary) then\n    raise exception 'anon_merge_invalid' using errcode = '42501';\n  end if;\n  return vault_enclave.anon_merge_host(p_primary, p_secondary);\nend $function$"
+    },
+    {
+      "schema": "public",
+      "name": "rout_anon_booking_purge",
+      "args": "p_user uuid",
+      "def": "CREATE OR REPLACE FUNCTION public.rout_anon_booking_purge(p_user uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  if not public.rout_purge_due(p_user) then\n    raise exception 'anon_purge_not_due' using errcode = '42501';\n  end if;\n  return vault_enclave.anon_purge_host(p_user);\nend $function$"
     },
     {
       "schema": "public",
@@ -31413,6 +32440,150 @@
       "name": "activate_member_card",
       "args": "p_tap_ref text, p_activation_hash bytea",
       "def": "CREATE OR REPLACE FUNCTION vault_enclave.activate_member_card(p_tap_ref text, p_activation_hash bytea)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_now timestamptz := pg_catalog.clock_timestamp();\n  v_caller uuid := vault_enclave.caller_user_id();\n  v_grant vault_enclave.sdm_tap_grants%rowtype;\n  v_card vault_enclave.sdm_batch_cards%rowtype;\n  v_code_ok boolean;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'sdm_card_activate', 'denied', 'no_caller', null); return false;\n  end if;\n  if p_tap_ref is null or p_tap_ref !~ '^tap_[0-9a-f]{64}$'\n     or (p_activation_hash is not null and octet_length(p_activation_hash) <> 32) then\n    perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'denied', 'bad_request', null); return false;\n  end if;\n  select * into v_grant from vault_enclave.sdm_tap_grants g\n   where g.grant_digest = pg_catalog.sha256(pg_catalog.convert_to(p_tap_ref, 'UTF8')) for update;\n  if not found or v_grant.consumed_at is not null or v_grant.expires_at < v_now then\n    perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'denied',\n      case when not found then 'unknown_grant' when v_grant.consumed_at is not null then 'grant_spent' else 'grant_expired' end, null);\n    return false;\n  end if;\n  -- The grant is spent whatever happens next: one tap, one answer.\n  update vault_enclave.sdm_tap_grants set consumed_at = v_now, consumed_for = 'activation' where grant_digest = v_grant.grant_digest;\n  select * into v_card from vault_enclave.sdm_batch_cards c where c.card_id = v_grant.card_id for update;\n  -- Always run the full constant-time comparison, also when no code is required.\n  v_code_ok := vault_enclave.ct_equal_32(p_activation_hash, v_card.activation_hash);\n  if v_card.revoked_at is not null then\n    perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'denied', 'card_revoked', null); return false;\n  end if;\n  if v_card.owner_user_id is not null or v_card.activated_at is not null then\n    perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'denied', 'card_claimed', null); return false;\n  end if;\n  if v_card.activation_hash is not null and not v_code_ok then\n    perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'denied', 'activation_code_mismatch', null); return false;\n  end if;\n  update vault_enclave.sdm_batch_cards\n     set owner_user_id = v_caller, activated_at = v_now, initial_counter = last_counter\n   where card_id = v_card.card_id;\n  perform vault_enclave.append_audit(v_caller, 'sdm_card_activate', 'granted', 'ok', null);\n  return true;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_answer",
+      "args": "p_op text, p_ok boolean, p_why text, p_epoch bigint, p_ver bigint",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_answer(p_op text, p_ok boolean, p_why text, p_epoch bigint, p_ver bigint)\n RETURNS jsonb\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select pg_catalog.jsonb_build_object('op', p_op, 'ok', p_ok, 'why', p_why, 'epoch', p_epoch, 'ver', p_ver)\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_append_only",
+      "args": "",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_append_only()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  raise exception 'anon_append_only' using errcode = '42501';\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_booking_check",
+      "args": "p_tree_id text, p_nullifier bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_booking_check(p_tree_id text, p_nullifier bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_head bigint;\n  v_spent boolean;\n  v_invalid boolean;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_booking_check', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('check', false, 'no_caller', null, null);\n  end if;\n  select tr.head_epoch into v_head from vault_enclave.anon_smt_trees tr\n    join vault_enclave.anon_host_keys h on h.key_id = tr.key_id where tr.tree_id = p_tree_id and h.host_user_id = v_caller;\n  if not found then\n    perform vault_enclave.append_audit(v_caller, 'anon_booking_check', 'denied', 'unknown', null);\n    return vault_enclave.anon_answer('check', false, 'unknown', null, null);\n  end if;\n  if not vault_enclave.anon_len(p_nullifier, 32) then\n    perform vault_enclave.append_audit(v_caller, 'anon_booking_check', 'denied', 'malformed', null);\n    return vault_enclave.anon_answer('check', false, 'malformed', v_head, null);\n  end if;\n  select true, exists (select 1 from vault_enclave.anon_pseudonym_invalidations i\n                        where i.tree_id = b.tree_id and i.pseudonym = b.pseudonym)\n    into v_spent, v_invalid\n    from vault_enclave.anon_booking_tokens b where b.tree_id = p_tree_id and b.nullifier = p_nullifier;\n  perform vault_enclave.append_audit(v_caller, 'anon_booking_check', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('check', true, 'ok', v_head, null)\n    || pg_catalog.jsonb_build_object('spent', coalesce(v_spent, false), 'invalidated', coalesce(v_invalid, false));\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_booking_record",
+      "args": "p_tree_id text, p_head bigint, p_root bytea, p_root_sig bytea, p_nullifier bytea, p_pseudonym bytea, p_credential_epoch bigint, p_presentation bytea, p_pool_id text, p_pool_step bigint, p_take_commitment bytea, p_remaining_commitment bytea, p_capacity_proof bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_booking_record(p_tree_id text, p_head bigint, p_root bytea, p_root_sig bytea, p_nullifier bytea, p_pseudonym bytea, p_credential_epoch bigint, p_presentation bytea, p_pool_id text, p_pool_step bigint, p_take_commitment bytea, p_remaining_commitment bytea, p_capacity_proof bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  t vault_enclave.anon_smt_trees%rowtype;\n  k vault_enclave.anon_host_keys%rowtype;\n  cp vault_enclave.anon_capacity_pools%rowtype;\n  v_pooled boolean := p_pool_id is not null;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_booking_record', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('record', false, 'no_caller', null, null);\n  end if;\n  select tr.* into t from vault_enclave.anon_smt_trees tr join vault_enclave.anon_host_keys h on h.key_id = tr.key_id\n   where tr.tree_id = p_tree_id and h.host_user_id = v_caller for update of tr;\n  if found then\n    select * into k from vault_enclave.anon_host_keys h where h.key_id = t.key_id;\n    if v_pooled then\n      select * into cp from vault_enclave.anon_capacity_pools c where c.pool_id = p_pool_id and c.tree_id = t.tree_id for update;\n    end if;\n  end if;\n  if t.tree_id is null then\n    v_why := 'unknown';\n  elsif k.retired_at is not null then\n    v_why := 'retired';\n  elsif p_head is null or p_head < 0 or not vault_enclave.anon_len(p_root, 32) or not vault_enclave.anon_len(p_root_sig, 80)\n     or not vault_enclave.anon_len(p_nullifier, 32) or not vault_enclave.anon_len(p_pseudonym, 32)\n     or p_credential_epoch is null or p_credential_epoch < 0 or not vault_enclave.anon_is_proof(p_presentation)\n     or (v_pooled and (not vault_enclave.anon_id_ok(p_pool_id, 'cp') or p_pool_step is null or p_pool_step < 1\n          or p_pool_step > 65536 or not vault_enclave.anon_len(p_take_commitment, 48)\n          or not vault_enclave.anon_len(p_remaining_commitment, 48) or not vault_enclave.anon_len(p_capacity_proof, 1856)))\n     or (not v_pooled and (p_pool_step is not null or p_take_commitment is not null or p_remaining_commitment is not null\n          or p_capacity_proof is not null)) then\n    v_why := 'malformed';\n  elsif exists (select 1 from vault_enclave.anon_booking_tokens b join vault_enclave.anon_smt_roots r\n                  on r.tree_id = b.tree_id and r.epoch = b.root_epoch\n                 where b.tree_id = t.tree_id and b.nullifier = p_nullifier and b.root_epoch = p_head + 1\n                   and b.pseudonym = p_pseudonym and b.credential_epoch = p_credential_epoch\n                   and b.presentation = p_presentation and r.root = p_root and r.root_sig = p_root_sig) then\n    perform vault_enclave.append_audit(v_caller, 'anon_booking_record', 'granted', 'replay', null);\n    return vault_enclave.anon_answer('record', true, 'replay', p_head + 1, null);\n  elsif exists (select 1 from vault_enclave.anon_booking_tokens b where b.tree_id = t.tree_id and b.nullifier = p_nullifier) then\n    v_why := 'spent';\n  elsif exists (select 1 from vault_enclave.anon_booking_tokens b where b.tree_id = t.tree_id and b.pseudonym = p_pseudonym) then\n    v_why := 'pseudonym_taken';\n  elsif p_credential_epoch > k.epoch or (p_credential_epoch <> 0 and not exists (\n          select 1 from vault_enclave.anon_epoch_links l where l.key_id = k.key_id and l.to_epoch = p_credential_epoch)) then\n    v_why := 'epoch';\n  elsif v_pooled and cp.pool_id is null then\n    v_why := 'pool';\n  elsif p_head <> t.head_epoch then\n    v_why := 'conflict';\n  elsif v_pooled and p_pool_step <> cp.step + 1 then\n    v_why := 'pool_conflict';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_booking_record', 'denied', v_why, null);\n    return vault_enclave.anon_answer('record', false, v_why, t.head_epoch, case when v_pooled then cp.step end);\n  end if;\n  insert into vault_enclave.anon_smt_roots (tree_id, epoch, root, root_sig) values (t.tree_id, p_head + 1, p_root, p_root_sig);\n  insert into vault_enclave.anon_booking_tokens (tree_id, root_epoch, nullifier, pseudonym, credential_epoch, presentation)\n  values (t.tree_id, p_head + 1, p_nullifier, p_pseudonym, p_credential_epoch, p_presentation);\n  update vault_enclave.anon_smt_trees set head_epoch = p_head + 1 where tree_id = t.tree_id;\n  if v_pooled then\n    update vault_enclave.anon_capacity_pools set remaining_commitment = p_remaining_commitment, step = p_pool_step,\n           updated_at = pg_catalog.clock_timestamp() where pool_id = cp.pool_id;\n  end if;\n  perform vault_enclave.anon_ledger_append(t.tree_id, 'booking', p_pool_id, p_pool_step, p_take_commitment,\n                                           p_remaining_commitment, p_capacity_proof, p_nullifier, p_pseudonym);\n  perform vault_enclave.append_audit(v_caller, 'anon_booking_record', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('record', true, 'ok', p_head + 1, case when v_pooled then p_pool_step end);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_caller",
+      "args": "",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_caller()\n RETURNS uuid\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select u.id from public.users u where u.id = vault_enclave.caller_user_id()\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_capacity_open",
+      "args": "p_tree_id text, p_pool_id text, p_commitment bytea, p_proof bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_capacity_open(p_tree_id text, p_pool_id text, p_commitment bytea, p_proof bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  t vault_enclave.anon_smt_trees%rowtype;\n  k vault_enclave.anon_host_keys%rowtype;\n  cp vault_enclave.anon_capacity_pools%rowtype;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_capacity_open', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('pool_open', false, 'no_caller', null, null);\n  end if;\n  select tr.* into t from vault_enclave.anon_smt_trees tr join vault_enclave.anon_host_keys h on h.key_id = tr.key_id\n   where tr.tree_id = p_tree_id and h.host_user_id = v_caller for update of tr;\n  if found then\n    select * into k from vault_enclave.anon_host_keys h where h.key_id = t.key_id;\n  end if;\n  select * into cp from vault_enclave.anon_capacity_pools c where c.pool_id = p_pool_id;\n  if t.tree_id is null then\n    v_why := 'unknown';\n  elsif k.retired_at is not null then\n    v_why := 'retired';\n  elsif not vault_enclave.anon_id_ok(p_pool_id, 'cp') or not vault_enclave.anon_len(p_commitment, 48)\n     or not vault_enclave.anon_len(p_proof, 928) then\n    v_why := 'malformed';\n  elsif cp.pool_id is not null and cp.tree_id = t.tree_id and cp.opened_commitment = p_commitment and cp.opened_proof = p_proof then\n    perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'granted', 'replay', null);\n    return vault_enclave.anon_answer('pool_open', true, 'replay', t.head_epoch, cp.step);\n  elsif cp.pool_id is not null then\n    v_why := 'taken';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'denied', v_why, null);\n    return vault_enclave.anon_answer('pool_open', false, v_why, t.head_epoch, null);\n  end if;\n  insert into vault_enclave.anon_capacity_pools (pool_id, tree_id, opened_commitment, opened_proof, remaining_commitment)\n  values (p_pool_id, t.tree_id, p_commitment, p_proof, p_commitment);\n  perform vault_enclave.anon_ledger_append(t.tree_id, 'pool_open', p_pool_id, 0, null, p_commitment, p_proof, null, null);\n  perform vault_enclave.append_audit(v_caller, 'anon_capacity_open', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('pool_open', true, 'ok', t.head_epoch, 0);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_chain",
+      "args": "p_key_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_chain(p_key_id text)\n RETURNS jsonb\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select case when k.key_id is null then pg_catalog.jsonb_build_object('found', false)\n  else pg_catalog.jsonb_build_object(\n    'found', true, 'keyId', k.key_id, 'epoch', k.epoch, 'retired', k.retired_at is not null,\n    'anchorPublicKey', pg_catalog.encode(k.anchor_pk, 'hex'),\n    'anchorSignerPublicKey', pg_catalog.encode(k.anchor_signer_pk, 'hex'),\n    'anchorSignature', pg_catalog.encode(k.anchor_sig, 'hex'),\n    'currentPublicKey', pg_catalog.encode(k.current_pk, 'hex'),\n    'links', coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n        'from', l.from_epoch, 'to', l.to_epoch,\n        'publicKey', pg_catalog.encode(l.next_pk, 'hex'), 'signature', pg_catalog.encode(l.link_sig, 'hex'))\n        order by l.from_epoch)\n      from vault_enclave.anon_epoch_links l where l.key_id = k.key_id), '[]'::jsonb)) end\n  from (select 1) d left join vault_enclave.anon_host_keys k on k.key_id = p_key_id\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_key_advance",
+      "args": "p_key_id text, p_ver bigint, p_from bigint, p_to bigint, p_next_pk bytea, p_link_sig bytea, p_state bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_key_advance(p_key_id text, p_ver bigint, p_from bigint, p_to bigint, p_next_pk bytea, p_link_sig bytea, p_state bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  k vault_enclave.anon_host_keys%rowtype;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_host_key_advance', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('advance', false, 'no_caller', null, null);\n  end if;\n  select * into k from vault_enclave.anon_host_keys h where h.key_id = p_key_id and h.host_user_id = v_caller for update;\n  if not found then\n    v_why := 'unknown';\n  elsif k.retired_at is not null then\n    v_why := 'retired';\n  elsif p_ver = k.ver - 1 and p_to = k.epoch and exists (select 1 from vault_enclave.anon_epoch_links l\n          where l.key_id = k.key_id and l.from_epoch = p_from and l.to_epoch = p_to\n            and l.next_pk = p_next_pk and l.link_sig = p_link_sig) then\n    -- The same transition again (a retried request): its stored answer.\n    perform vault_enclave.append_audit(v_caller, 'anon_host_key_advance', 'granted', 'replay', null);\n    return vault_enclave.anon_answer('advance', true, 'replay', k.epoch, k.ver);\n  elsif p_from is null or p_to is null or p_from < 0 or p_to <= p_from or p_to - p_from > 65536\n     or p_to > 9007199254740991 or not vault_enclave.anon_len(p_next_pk, 96)\n     or not vault_enclave.anon_len(p_link_sig, 80) or not vault_enclave.anon_is_hsk(p_state)\n     or p_next_pk = k.current_pk then\n    v_why := 'malformed';\n  elsif p_ver is distinct from k.ver or p_from is distinct from k.epoch then\n    v_why := 'conflict';\n  elsif (select pg_catalog.count(*) from vault_enclave.anon_epoch_links l where l.key_id = k.key_id) >= 1024 then\n    -- forward-secure.ts MAX_CHAIN_LINKS: a longer chain no guest could verify.\n    v_why := 'chain_full';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_host_key_advance', 'denied', v_why, null);\n    return vault_enclave.anon_answer('advance', false, v_why, k.epoch, k.ver);\n  end if;\n  insert into vault_enclave.anon_epoch_links (key_id, from_epoch, to_epoch, next_pk, link_sig)\n  values (k.key_id, p_from, p_to, p_next_pk, p_link_sig);\n  update vault_enclave.anon_host_keys set epoch = p_to, current_pk = p_next_pk, ver = ver + 1,\n         updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id returning * into k;\n  update vault_enclave.anon_host_key_states set state_envelope = p_state, updated_at = pg_catalog.clock_timestamp()\n   where key_id = k.key_id;\n  perform vault_enclave.append_audit(v_caller, 'anon_host_key_advance', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('advance', true, 'ok', k.epoch, k.ver);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_key_init",
+      "args": "p_proof uuid, p_key_id text, p_anchor_pk bytea, p_anchor_signer_pk bytea, p_anchor_sig bytea, p_state bytea, p_tree_id text, p_root_signer_pk bytea, p_genesis_sig bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_key_init(p_proof uuid, p_key_id text, p_anchor_pk bytea, p_anchor_signer_pk bytea, p_anchor_sig bytea, p_state bytea, p_tree_id text, p_root_signer_pk bytea, p_genesis_sig bytea)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_why text := 'ok';\n  v_genesis bytea;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_host_key_init', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('init', false, 'no_caller', null, null);\n  end if;\n  -- One init per host at a time (released at commit).\n  perform pg_catalog.pg_advisory_xact_lock(273, pg_catalog.hashtext(v_caller::text));\n  if not vault_enclave.anon_id_ok(p_key_id, 'hk') or not vault_enclave.anon_id_ok(p_tree_id, 'st')\n     or not vault_enclave.anon_len(p_anchor_pk, 96) or not vault_enclave.anon_len(p_anchor_signer_pk, 96)\n     or not vault_enclave.anon_len(p_anchor_sig, 80) or not vault_enclave.anon_len(p_root_signer_pk, 96)\n     or not vault_enclave.anon_len(p_genesis_sig, 80) or not vault_enclave.anon_is_hsk(p_state) then\n    v_why := 'malformed';\n  elsif exists (select 1 from vault_enclave.anon_host_keys k where k.host_user_id = v_caller and k.retired_at is null) then\n    v_why := 'busy';\n  elsif exists (select 1 from vault_enclave.anon_host_keys k where k.key_id = p_key_id)\n     or exists (select 1 from vault_enclave.anon_smt_trees t where t.tree_id = p_tree_id) then\n    v_why := 'taken';\n  elsif not vault_enclave.anon_stepup(v_caller, p_proof) then\n    v_why := 'stepup';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_host_key_init', 'denied', v_why, null);\n    return vault_enclave.anon_answer('init', false, v_why, null, null);\n  end if;\n  insert into vault_enclave.anon_host_keys (key_id, host_user_id, anchor_pk, anchor_signer_pk, anchor_sig, current_pk)\n  values (p_key_id, v_caller, p_anchor_pk, p_anchor_signer_pk, p_anchor_sig, p_anchor_pk);\n  insert into vault_enclave.anon_host_key_states (key_id, state_envelope) values (p_key_id, p_state);\n  insert into vault_enclave.anon_smt_trees (tree_id, key_id, root_signer_pk, ledger_head)\n  values (p_tree_id, p_key_id, p_root_signer_pk, '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);\n  insert into vault_enclave.anon_smt_roots (tree_id, epoch, root, root_sig)\n  values (p_tree_id, 0, '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, p_genesis_sig);\n  v_genesis := vault_enclave.anon_ledger_hash(p_tree_id, 0, 'genesis', 0,\n    '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea, null, null, null, null, null, null, null,\n    '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea);\n  insert into vault_enclave.anon_ledger_events (tree_id, seq, kind, root_epoch, smt_root, prev_hash, event_hash)\n  values (p_tree_id, 0, 'genesis', 0, '\\x46cb7f6a1a639693f80c2afddb77288ff88ff08ad19943a595c4c92633ec9505'::bytea,\n          '\\x0000000000000000000000000000000000000000000000000000000000000000'::bytea, v_genesis);\n  update vault_enclave.anon_smt_trees set ledger_head = v_genesis where tree_id = p_tree_id;\n  perform vault_enclave.append_audit(v_caller, 'anon_host_key_init', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('init', true, 'ok', 0, 0);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_key_retire",
+      "args": "p_proof uuid, p_key_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_key_retire(p_proof uuid, p_key_id text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  k vault_enclave.anon_host_keys%rowtype;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_host_key_retire', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('retire', false, 'no_caller', null, null);\n  end if;\n  select * into k from vault_enclave.anon_host_keys h where h.key_id = p_key_id and h.host_user_id = v_caller for update;\n  if not found then\n    v_why := 'unknown';\n  elsif k.retired_at is not null then\n    v_why := 'retired';\n  elsif not vault_enclave.anon_stepup(v_caller, p_proof) then\n    v_why := 'stepup';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_host_key_retire', 'denied', v_why, null);\n    return vault_enclave.anon_answer('retire', false, v_why, k.epoch, k.ver);\n  end if;\n  perform vault_enclave.anon_retire_chain(k.key_id);\n  select * into k from vault_enclave.anon_host_keys h where h.key_id = p_key_id;\n  perform vault_enclave.append_audit(v_caller, 'anon_host_key_retire', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('retire', true, 'ok', k.epoch, k.ver);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_host_key_state",
+      "args": "p_key_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_host_key_state(p_key_id text)\n RETURNS TABLE(granted boolean, epoch bigint, ver bigint, state_envelope bytea)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  r record;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_host_state_read', 'denied', 'no_caller', null);\n    return query select false, null::bigint, null::bigint, null::bytea; return;\n  end if;\n  select k.epoch as e, k.ver as v, s.state_envelope as env into r\n    from vault_enclave.anon_host_keys k join vault_enclave.anon_host_key_states s on s.key_id = k.key_id\n   where k.key_id = p_key_id and k.host_user_id = v_caller and k.retired_at is null;\n  if not found then\n    perform vault_enclave.append_audit(v_caller, 'anon_host_state_read', 'denied', 'unknown', null);\n    return query select false, null::bigint, null::bigint, null::bytea; return;\n  end if;\n  perform vault_enclave.append_audit(v_caller, 'anon_host_state_read', 'granted', 'ok', null);\n  return query select true, r.e, r.v, r.env;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_id_ok",
+      "args": "p_id text, p_prefix text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_id_ok(p_id text, p_prefix text)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select p_id is not null and p_id ~ ('^' || p_prefix || '_[0-9a-f]{64}$')\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_is_hsk",
+      "args": "p_env bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_is_hsk(p_env bytea)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select p_env is not null and octet_length(p_env) = 1703\n     and substring(p_env from 1 for 4) = '\\x52564531'::bytea\n     and pg_catalog.get_byte(p_env, 4) = 1 and pg_catalog.get_byte(p_env, 5) = 9 and pg_catalog.get_byte(p_env, 6) = 2\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_is_proof",
+      "args": "p bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_is_proof(p bytea)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select p is not null and octet_length(p) between 8 + 272 + 80 + 1856 and 8 + 1840 + 80 + 1856\n     and (octet_length(p) - 8 - 80 - 1856 - 272) % 32 = 0\n     and ('x' || pg_catalog.encode(substring(p from 1 for 8), 'hex'))::bit(64)::bigint = octet_length(p) - 8 - 80 - 1856\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_ledger",
+      "args": "p_tree_id text, p_after bigint, p_limit integer",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_ledger(p_tree_id text, p_after bigint, p_limit integer)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  t vault_enclave.anon_smt_trees%rowtype;\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_ledger_read', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('ledger', false, 'no_caller', null, null);\n  end if;\n  select tr.* into t from vault_enclave.anon_smt_trees tr join vault_enclave.anon_host_keys h on h.key_id = tr.key_id\n   where tr.tree_id = p_tree_id and h.host_user_id = v_caller;\n  if not found or p_after is null or p_after < -1 or p_limit is null or p_limit < 1 or p_limit > 500 then\n    perform vault_enclave.append_audit(v_caller, 'anon_ledger_read', 'denied', case when t.tree_id is null then 'unknown' else 'malformed' end, null);\n    return vault_enclave.anon_answer('ledger', false, case when t.tree_id is null then 'unknown' else 'malformed' end, null, null);\n  end if;\n  perform vault_enclave.append_audit(v_caller, 'anon_ledger_read', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('ledger', true, 'ok', t.head_epoch, null) || pg_catalog.jsonb_build_object(\n    'treeId', t.tree_id, 'headSeq', t.ledger_seq, 'headHash', pg_catalog.encode(t.ledger_head, 'hex'),\n    'events', coalesce((select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(\n        'seq', e.seq, 'kind', e.kind, 'rootEpoch', e.root_epoch, 'smtRoot', pg_catalog.encode(e.smt_root, 'hex'),\n        'poolId', e.pool_id, 'poolStep', e.pool_step,\n        'takeCommitment', pg_catalog.encode(e.take_commitment, 'hex'),\n        'remainingCommitment', pg_catalog.encode(e.remaining_commitment, 'hex'),\n        'proof', pg_catalog.encode(e.proof, 'hex'), 'nullifier', pg_catalog.encode(e.nullifier, 'hex'),\n        'pseudonym', pg_catalog.encode(e.pseudonym, 'hex'),\n        'prevHash', pg_catalog.encode(e.prev_hash, 'hex'), 'eventHash', pg_catalog.encode(e.event_hash, 'hex')) order by e.seq)\n      from (select * from vault_enclave.anon_ledger_events x where x.tree_id = t.tree_id and x.seq > p_after\n            order by x.seq limit p_limit) e), '[]'::jsonb));\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_ledger_append",
+      "args": "p_tree text, p_kind text, p_pool text, p_pool_step bigint, p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_ledger_append(p_tree text, p_kind text, p_pool text, p_pool_step bigint, p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea)\n RETURNS bytea\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  t vault_enclave.anon_smt_trees%rowtype;\n  v_root bytea;\n  v_hash bytea;\nbegin\n  select * into strict t from vault_enclave.anon_smt_trees tr where tr.tree_id = p_tree for update;\n  select r.root into strict v_root from vault_enclave.anon_smt_roots r where r.tree_id = p_tree and r.epoch = t.head_epoch;\n  v_hash := vault_enclave.anon_ledger_hash(p_tree, t.ledger_seq + 1, p_kind, t.head_epoch, v_root, p_pool, p_pool_step,\n                                           p_take, p_rem, p_proof, p_nf, p_ps, t.ledger_head);\n  insert into vault_enclave.anon_ledger_events (tree_id, seq, kind, root_epoch, smt_root, pool_id, pool_step,\n      take_commitment, remaining_commitment, proof, nullifier, pseudonym, prev_hash, event_hash)\n  values (p_tree, t.ledger_seq + 1, p_kind, t.head_epoch, v_root, p_pool, p_pool_step, p_take, p_rem, p_proof, p_nf, p_ps,\n          t.ledger_head, v_hash);\n  update vault_enclave.anon_smt_trees set ledger_seq = ledger_seq + 1, ledger_head = v_hash where tree_id = p_tree;\n  return v_hash;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_ledger_hash",
+      "args": "p_tree text, p_seq bigint, p_kind text, p_root_epoch bigint, p_root bytea, p_pool text, p_pool_step bigint, p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea, p_prev bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_ledger_hash(p_tree text, p_seq bigint, p_kind text, p_root_epoch bigint, p_root bytea, p_pool text, p_pool_step bigint, p_take bytea, p_rem bytea, p_proof bytea, p_nf bytea, p_ps bytea, p_prev bytea)\n RETURNS bytea\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select pg_catalog.sha256(pg_catalog.convert_to('rout.anon.ledger.v1', 'UTF8')\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_tree, 'UTF8')) || pg_catalog.int8send(p_seq)\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_kind, 'UTF8')) || pg_catalog.int8send(p_root_epoch) || p_root\n    || vault_enclave.anon_lp(pg_catalog.convert_to(p_pool, 'UTF8')) || pg_catalog.int8send(coalesce(p_pool_step, -1))\n    || vault_enclave.anon_lp(p_take) || vault_enclave.anon_lp(p_rem) || vault_enclave.anon_lp(p_proof)\n    || vault_enclave.anon_lp(p_nf) || vault_enclave.anon_lp(p_ps) || p_prev)\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_len",
+      "args": "p bytea, n integer",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_len(p bytea, n integer)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select p is not null and octet_length(p) = n\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_lp",
+      "args": "p bytea",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_lp(p bytea)\n RETURNS bytea\n LANGUAGE sql\n IMMUTABLE\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\n  select case when p is null then '\\xffffffff'::bytea else pg_catalog.int4send(pg_catalog.octet_length(p)) || p end\n$function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_merge_host",
+      "args": "p_primary uuid, p_secondary uuid",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_merge_host(p_primary uuid, p_secondary uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_secondary order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    update vault_enclave.anon_host_keys set host_user_id = p_primary, updated_at = pg_catalog.clock_timestamp()\n     where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  if n > 0 then\n    perform vault_enclave.append_audit(p_primary, 'anon_host_merge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_pseudonym_invalidate",
+      "args": "p_tree_id text, p_pseudonym bytea, p_reason text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_pseudonym_invalidate(p_tree_id text, p_pseudonym bytea, p_reason text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  v_caller uuid := vault_enclave.anon_caller();\n  v_tree text;\n  v_why text := 'ok';\nbegin\n  if v_caller is null then\n    perform vault_enclave.append_audit(null, 'anon_pseudonym_invalidate', 'denied', 'no_caller', null);\n    return vault_enclave.anon_answer('invalidate', false, 'no_caller', null, null);\n  end if;\n  select tr.tree_id into v_tree from vault_enclave.anon_smt_trees tr\n    join vault_enclave.anon_host_keys h on h.key_id = tr.key_id where tr.tree_id = p_tree_id and h.host_user_id = v_caller\n    for update of tr;\n  if v_tree is null then\n    v_why := 'unknown';\n  elsif not vault_enclave.anon_len(p_pseudonym, 32) or p_reason is null\n     or p_reason not in ('cancelled', 'no_show', 'abuse', 'guest_request') then\n    v_why := 'malformed';\n  elsif not exists (select 1 from vault_enclave.anon_booking_tokens b where b.tree_id = v_tree and b.pseudonym = p_pseudonym) then\n    v_why := 'unknown';\n  end if;\n  if v_why <> 'ok' then\n    perform vault_enclave.append_audit(v_caller, 'anon_pseudonym_invalidate', 'denied', v_why, null);\n    return vault_enclave.anon_answer('invalidate', false, v_why, null, null);\n  end if;\n  insert into vault_enclave.anon_pseudonym_invalidations (tree_id, pseudonym, reason)\n  values (v_tree, p_pseudonym, p_reason) on conflict (tree_id, pseudonym) do nothing;\n  if not found then\n    perform vault_enclave.append_audit(v_caller, 'anon_pseudonym_invalidate', 'granted', 'already', null);\n    return vault_enclave.anon_answer('invalidate', true, 'already', null, null);\n  end if;\n  perform vault_enclave.anon_ledger_append(v_tree, 'invalidate', null, null, null, null, null, null, p_pseudonym);\n  perform vault_enclave.append_audit(v_caller, 'anon_pseudonym_invalidate', 'granted', 'ok', null);\n  return vault_enclave.anon_answer('invalidate', true, 'ok', null, null);\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_purge_host",
+      "args": "p_user uuid",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_purge_host(p_user uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare\n  k record;\n  n integer := 0;\nbegin\n  for k in select h.key_id from vault_enclave.anon_host_keys h where h.host_user_id = p_user order by h.key_id for update loop\n    perform vault_enclave.anon_retire_chain(k.key_id);\n    delete from vault_enclave.anon_host_key_states s where s.key_id = k.key_id;\n    update vault_enclave.anon_host_keys set host_user_id = null, purged_at = pg_catalog.clock_timestamp(),\n           updated_at = pg_catalog.clock_timestamp() where key_id = k.key_id;\n    n := n + 1;\n  end loop;\n  if n > 0 then\n    perform vault_enclave.append_audit(null, 'anon_host_purge', 'granted', 'ok', null);\n  end if;\n  return n;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_retire_chain",
+      "args": "p_key_id text",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_retire_chain(p_key_id text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\ndeclare v_tree text;\nbegin\n  perform 1 from vault_enclave.anon_host_keys k where k.key_id = p_key_id and k.retired_at is null for update;\n  if not found then return false; end if;\n  delete from vault_enclave.anon_host_key_states s where s.key_id = p_key_id;\n  update vault_enclave.anon_host_keys set retired_at = pg_catalog.clock_timestamp(), ver = ver + 1,\n         updated_at = pg_catalog.clock_timestamp() where key_id = p_key_id;\n  select t.tree_id into v_tree from vault_enclave.anon_smt_trees t where t.key_id = p_key_id;\n  if v_tree is not null then\n    perform vault_enclave.anon_ledger_append(v_tree, 'retire', null, null, null, null, null, null, null);\n  end if;\n  return true;\nend $function$"
+    },
+    {
+      "schema": "vault_enclave",
+      "name": "anon_stepup",
+      "args": "p_caller uuid, p_proof uuid",
+      "def": "CREATE OR REPLACE FUNCTION vault_enclave.anon_stepup(p_caller uuid, p_proof uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'pg_temp'\nAS $function$\nbegin\n  if p_proof is null then return false; end if;\n  update vault_enclave.step_up_proofs s set consumed_at = pg_catalog.clock_timestamp()\n   where s.proof_id = p_proof and s.user_id = p_caller and s.method = 'passkey' and s.consumed_at is null\n     and s.verified_at >= pg_catalog.clock_timestamp() - interval '300 seconds'\n     and s.verified_at <= pg_catalog.clock_timestamp() + interval '5 seconds';\n  return found;\nend $function$"
     },
     {
       "schema": "vault_enclave",
