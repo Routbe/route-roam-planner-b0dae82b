@@ -9,4 +9,4 @@
  * bytes before compiling; CI (.github/workflows/wasm-reproducible.yml) rebuilds
  * and compares. Rebuild only with build.sh and update this pin in the same change.
  */
-export const ROUT_ZK_WASM_SHA384: string | null = "a4a02c5f14e0fd6979a7327eaa31cfdc5e2c2e79a3b1887fa48c8bd38781765556132eab08b74fd63a0d06d8074a540c";
+export const ROUT_ZK_WASM_SHA384: string | null = "6f47f561133012e89ae585b3e632db40b488519facfbe453d3e72e8d003e1716c95f19e686238f255cc79b393e3980e4";
