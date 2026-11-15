@@ -240,6 +240,7 @@ export function wipeAllPasswordState(): number {
   n += wipeZkEngineMemory();
   n += hostKeys.wipeAll();
   n += guestBookings.wipeAll();
+  if (guestVault.lock()) n++;
   epochChains.clear();
   return n;
 }
