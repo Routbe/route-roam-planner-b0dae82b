@@ -363,17 +363,18 @@ export class GuestVault {
   async unlock(input: GuestSecretInput, now = Date.now()): Promise<UnlockedGuestVault> {
     this.lock();
     const s = deriveGuestSecrets(input);
-    let key: CryptoKey;
-    try {
-      key = await crypto.subtle.importKey("raw", s.storageKey as BufferSource, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-    } finally {
-      wipe(s.storageKey);
-    }
-    const storage = this.storageFactory();
     const seedBytes = new Uint8Array(64);
-    seedBytes.set(s.masterSeed);
-    seedBytes.set(s.skGuest, 32);
+    const bookings: { handle: string; data: GuestSlotData }[] = [];
     try {
+      let key: CryptoKey;
+      try {
+        key = await crypto.subtle.importKey("raw", s.storageKey as BufferSource, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+      } finally {
+        wipe(s.storageKey);
+      }
+      const storage = this.storageFactory();
+      seedBytes.set(s.masterSeed);
+      seedBytes.set(s.skGuest, 32);
       let created = false;
       const stored = await storage.get(`${s.scope}|seed`).catch(() => {
         throw new GuestVaultError("guest_vault_storage");
@@ -389,7 +390,6 @@ export class GuestVault {
         });
         created = true;
       }
-      const bookings: { handle: string; data: GuestSlotData }[] = [];
       let dropped = 0;
       const prefix = `${s.scope}|booking:`;
       for (const k of await storage.keys(prefix)) {
@@ -417,9 +417,10 @@ export class GuestVault {
       return { scope: s.scope, method: s.method, created, bookings, dropped };
     } catch (e) {
       wipe(s.skGuest);
+      for (const b of bookings) wipeGuestBooking(b.data);
       throw e;
     } finally {
-      wipe(s.masterSeed, seedBytes);
+      wipe(s.storageKey, s.masterSeed, seedBytes);
     }
   }
 
