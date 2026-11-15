@@ -5,8 +5,8 @@ import { createFileRoute } from "@tanstack/react-router";
  * booking keys (Stap 7g): per registered device the anchor PK_0, its epoch
  * links and the host passkey's WebAuthn assertion over that anchor (MDS3
  * attested passkey). Public material only; guests verify it themselves with
- * src/lib/anon-booking/zkp-anchor.ts. Needs db/0274 (held until the
- * owner's GO); until then every host answers 404 `not_available`.
+ * src/lib/anon-booking/zkp-anchor.ts. Needs db/0274; on a database without it
+ * every host answers 404 `not_available`.
  */
 const json = (status: number, body: unknown, cache: string) =>
   new Response(JSON.stringify(body), {
